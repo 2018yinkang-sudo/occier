@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cc-common
+source "${SCRIPT_DIR}/cc-common"
+
+cc_load_secrets
+cc_require_nonempty DEEPSEEK_API_KEY
+cc_clear_provider_env
+
+export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
+export ANTHROPIC_MODEL="deepseek-v4-pro[1m]"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek-v4-pro[1m]"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-pro[1m]"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek-v4-flash"
+export CLAUDE_CODE_SUBAGENT_MODEL="deepseek-v4-flash"
+export CLAUDE_CODE_EFFORT_LEVEL="max"
+
+printf 'Claude Code provider: DeepSeek\n'
+printf 'Model: %s\n' "$ANTHROPIC_MODEL"
+printf 'Project: %s\n\n' "$PWD"
+
+cc_start "$@"

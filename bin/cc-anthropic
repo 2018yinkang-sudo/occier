@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cc-common
+source "${SCRIPT_DIR}/cc-common"
+
+cc_clear_provider_env
+cc_require_command claude
+
+# If ANTHROPIC_API_KEY_OFFICIAL exists in the private env file, use API billing.
+# Otherwise Claude Code will use the normal claude.ai login flow.
+if [[ -f "$CC_ENV_FILE" ]]; then
+  cc_load_secrets
+fi
+
+if [[ -n "${ANTHROPIC_API_KEY_OFFICIAL:-}" ]]; then
+  export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY_OFFICIAL"
+  printf 'Claude Code provider: Anthropic API\n\n'
+else
+  printf 'Claude Code provider: Anthropic / claude.ai login\n\n'
+fi
+
+cc_start "$@"
