@@ -1,6 +1,7 @@
 import { select } from '@inquirer/prompts';
-import { c, ok, warn, info, fail, divider } from '../tui.mjs';
-import { hasCommand, run } from '../../exec/runner.mjs';
+import { c, ok, fail, divider } from '../tui.mjs';
+import { installClaude, updateClaude } from '../../tools/claude/install.mjs';
+import { installOpenCode, updateOpenCode } from '../../tools/opencode/install.mjs';
 
 export async function installTool(tool) {
   if (!tool) {
@@ -23,42 +24,15 @@ async function doInstall(tool) {
   console.log(`  ${c.boldWhite(`Install ${tool === 'claude' ? 'Claude Code' : 'OpenCode'}`)}`);
   console.log(``);
 
-  const installed = await hasCommand(tool);
-  if (installed) {
-    const r = await run(tool, ['--version'], { timeout: 5000 });
-    ok(`${tool === 'claude' ? 'Claude Code' : 'OpenCode'} already installed (${r.stdout.toString().trim()})`);
-    console.log(``);
-    return;
-  }
-
   if (tool === 'claude') {
-    info('Claude Code installation requires npm.');
-    const npmOk = await hasCommand('npm');
-    if (!npmOk) {
-      fail('npm is required. Install Node.js + npm first.');
-      console.log(``);
-      return;
-    }
-    console.log(`  ${c.gray('Installing Claude Code globally...')}`);
-    const r = await run('npm', ['install', '-g', '@anthropic-ai/claude-code'], { timeout: 120000 });
-    if (r.exitCode === 0) {
-      ok('Claude Code installed');
-      info('Run: claude --version to verify');
-    } else {
-      fail(`Installation failed: ${r.stderr}`);
-    }
-  } else if (tool === 'opencode') {
-    info('OpenCode installation requires npm.');
-    const npmOk = await hasCommand('npm');
-    if (!npmOk) {
-      fail('npm is required. Install Node.js + npm first.');
-      console.log(``);
-      return;
-    }
-    console.log(`  ${c.gray('See https://opencode.ai for installation instructions')}`);
-    info('OpenCode can be installed via: npm install -g @opencode-ai/cli or brew');
+    const result = await installClaude();
+    if (result.installed) ok(`Claude Code ${result.version || 'installed'}`);
+    else fail(`Installation failed: ${result.error || 'unknown error'}`);
+  } else {
+    const result = await installOpenCode();
+    if (result.installed) ok(`OpenCode ${result.version || 'installed'}`);
+    else fail(`Installation failed: ${result.error || 'unknown error'}`);
   }
-
   console.log(``);
 }
 
@@ -83,11 +57,12 @@ async function doUpdate(tool) {
   console.log(`  ${c.boldWhite(`Update ${tool === 'claude' ? 'Claude Code' : 'OpenCode'}`)}`);
   console.log(``);
 
-  const r = await run('npm', ['update', '-g', tool === 'claude' ? '@anthropic-ai/claude-code' : '@opencode-ai/cli'], { timeout: 120000 });
-  if (r.exitCode === 0) {
-    ok(`${tool === 'claude' ? 'Claude Code' : 'OpenCode'} updated`);
+  if (tool === 'claude') {
+    const result = await updateClaude();
+    ok(result.version === 'updated' ? 'Updated' : 'Already up to date');
   } else {
-    warn(`Update attempted. Check npm for latest version.`);
+    const result = await updateOpenCode();
+    ok(result.version === 'updated' ? 'Updated' : 'Already up to date');
   }
   console.log(``);
 }
