@@ -179,6 +179,30 @@ export async function route(args) {
     return;
   }
 
+  if (cmd === 'group') {
+    const sub = args[1] || '';
+    if (sub === 'use') {
+      const { groupUse } = await import('./commands/v2/group.mjs');
+      await groupUse();
+    } else {
+      const { groupList } = await import('./commands/v2/group.mjs');
+      await groupList();
+    }
+    return;
+  }
+
+  if (cmd === 'model') {
+    const sub = args[1] || '';
+    if (sub === 'probe') {
+      const { modelProbe } = await import('./commands/v2/group.mjs');
+      await modelProbe();
+    } else {
+      const { modelList } = await import('./commands/v2/group.mjs');
+      await modelList();
+    }
+    return;
+  }
+
   if (cmd === 'launch') {
     const { runLaunch } = await import('./commands/v2/launch.mjs');
     const rest = args.slice(1);
