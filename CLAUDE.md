@@ -700,7 +700,7 @@ Before committing, always run `npm run lint` and fix all errors. Do not suppress
 ### GitHub Actions Workflows
 
 **`.github/workflows/ci.yml`** — triggered on push/PR to `main`:
-- Matrix test across Node.js 18, 20, 22
+- Matrix test across Node.js 20, 22
 - Runs `npm ci → lint → test`
 
 **`.github/workflows/publish.yml`** — triggered on tag push matching `v*`:

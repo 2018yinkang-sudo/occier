@@ -81,7 +81,7 @@ This works because Claude Code supports custom Anthropic-compatible API endpoint
 
 ## Prerequisites
 
-- **Node.js** >= 18
+- **Node.js** >= 20
 - **Claude Code** CLI installed (`claude --version` must succeed)
 - At least one provider API key
 
