@@ -15,6 +15,7 @@ const HELP = `
     ${c.cyan('config set-key')}         Update a specific API key
     ${c.cyan('config reset')}           Reset all configuration
     ${c.cyan('config show')}            Show config file locations and keys
+    ${c.cyan('fix-path')}               Auto-configure PATH for new terminals
     ${c.cyan('remove')}                 Remove all configuration and cleanup
     ${c.cyan('--help, -h')}             Show this help
     ${c.cyan('--version, -v')}          Show version
@@ -88,6 +89,12 @@ export async function route(args) {
   if (cmd === 'remove') {
     const { runRemove } = await import('./commands/remove.mjs');
     await runRemove();
+    return;
+  }
+
+  if (cmd === 'fix-path') {
+    const { fixPath } = await import('./commands/fix-path.mjs');
+    await fixPath();
     return;
   }
 

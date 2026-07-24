@@ -1,10 +1,13 @@
 {
   "name": "occier",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Claude Code multi-provider CLI — OpenClaw-style interactive TUI",
   "type": "module",
   "bin": {
     "occier": "./bin/occier.mjs"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -15,7 +18,8 @@
   "files": [
     "bin/",
     "src/",
-    "config/"
+    "config/",
+    "scripts/"
   ],
   "keywords": ["claude-code", "deepseek", "kimi", "anthropic", "cli", "ai"],
   "license": "MIT",
