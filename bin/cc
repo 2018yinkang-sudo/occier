@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cc-common
+source "${SCRIPT_DIR}/cc-common"
+
+cc_load_secrets
+cc_clear_provider_env
+
+cat <<'MENU'
+
+  ╔══════════════════════════════════════╗
+  ║   Claude Code  ——  Provider Select  ║
+  ╠══════════════════════════════════════╣
+  ║                                      ║
+  ║  1) DeepSeek   后端 / 架构 / 排错    ║
+  ║  2) Kimi       前端 / 设计 / 视觉    ║
+  ║  3) Anthropic  官方 Claude API       ║
+  ║                                      ║
+  ║  q) Quit                             ║
+  ║                                      ║
+  ╚══════════════════════════════════════╝
+
+MENU
+
+read -r -p "  Choose [1-3/q]: " CHOICE
+printf '\n'
+
+case "$CHOICE" in
+  1)
+    cc_require_nonempty DEEPSEEK_API_KEY
+    export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+    export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
+    export ANTHROPIC_MODEL="deepseek-v4-pro[1m]"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek-v4-pro[1m]"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-pro[1m]"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek-v4-flash"
+    export CLAUDE_CODE_SUBAGENT_MODEL="deepseek-v4-flash"
+    export CLAUDE_CODE_EFFORT_LEVEL="max"
+    printf 'Provider: DeepSeek  |  Model: %s\n\n' "$ANTHROPIC_MODEL"
+    ;;
+  2)
+    cc_require_nonempty KIMI_API_KEY
+    export ANTHROPIC_BASE_URL="https://api.moonshot.cn/anthropic"
+    export ANTHROPIC_AUTH_TOKEN="$KIMI_API_KEY"
+    export ANTHROPIC_MODEL="kimi-k3[1m]"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="kimi-k3[1m]"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="kimi-k3[1m]"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="kimi-k3[1m]"
+    export ANTHROPIC_DEFAULT_FABLE_MODEL="kimi-k3[1m]"
+    export CLAUDE_CODE_SUBAGENT_MODEL="kimi-k3[1m]"
+    export CLAUDE_CODE_EFFORT_LEVEL="max"
+    export ENABLE_TOOL_SEARCH="false"
+    export CLAUDE_CODE_AUTO_COMPACT_WINDOW="1048576"
+    printf 'Provider: Kimi  |  Model: %s\n\n' "$ANTHROPIC_MODEL"
+    ;;
+  3)
+    cc_require_command claude
+    if [[ -n "${ANTHROPIC_API_KEY_OFFICIAL:-}" ]]; then
+      export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY_OFFICIAL"
+      printf 'Provider: Anthropic API\n\n'
+    else
+      printf 'Provider: Anthropic / claude.ai login\n\n'
+    fi
+    ;;
+  q|Q)
+    printf 'Bye.\n'
+    exit 0
+    ;;
+  *)
+    cc_die "Invalid choice: '$CHOICE'"
+    ;;
+esac
+
+cc_start "$@"

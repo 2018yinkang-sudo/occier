@@ -13,6 +13,7 @@ readonly BIN_FILES=(
   cc-anthropic
   cc-which
   cc-remove-all
+  cc
 )
 
 cat <<EOF
