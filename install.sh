@@ -13,6 +13,7 @@ install -m 0755 "${KIT_DIR}/bin/cc-deepseek" "${BIN_DIR}/cc-deepseek"
 install -m 0755 "${KIT_DIR}/bin/cc-kimi" "${BIN_DIR}/cc-kimi"
 install -m 0755 "${KIT_DIR}/bin/cc-anthropic" "${BIN_DIR}/cc-anthropic"
 install -m 0755 "${KIT_DIR}/bin/cc-which" "${BIN_DIR}/cc-which"
+install -m 0755 "${KIT_DIR}/bin/cc-remove-all" "${BIN_DIR}/cc-remove-all"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   install -m 0600 "${KIT_DIR}/config/providers.env.example" "$ENV_FILE"
@@ -34,6 +35,7 @@ printf '  cc-deepseek\n'
 printf '  cc-kimi\n'
 printf '  cc-anthropic\n'
 printf '  cc-which\n'
+printf '  cc-remove-all\n'
 printf '\nNext steps:\n'
 printf '  1. Edit %s\n' "$ENV_FILE"
 printf '  2. Run: source ~/.bashrc\n'
