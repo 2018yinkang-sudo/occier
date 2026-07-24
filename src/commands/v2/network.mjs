@@ -1,8 +1,24 @@
 import { c, ok, warn, fail, info, divider } from '../tui.mjs';
-import { detectCapabilities, detectProxyEnv } from '../../env/detect.mjs';
-import { run } from '../../exec/runner.mjs';
+import { detectCapabilities } from '../../env/detect.mjs';
 import { readConfig, writeConfig } from '../../schema/config.mjs';
-import { URL } from 'url';
+import { detectExistingProxy, COMMON_PORTS, buildProxyEnv, buildShellRcBlock, injectShellRc } from '../../network/proxy.mjs';
+import { detectWslNetworkMode, buildWslConfig } from '../../network/wsl.mjs';
+import { checkAll as checkConnectivity } from '../../network/connectivity.mjs';
+import { allMirrors } from '../../mirrors/registry.mjs';
+
+async function getRcPath() {
+  const { join } = await import('path');
+  const { homedir } = await import('os');
+  const candidates = ['.bashrc', '.zshrc', '.profile'];
+  for (const name of candidates) {
+    try {
+      const { accessSync, R_OK } = await import('fs');
+      accessSync(join(homedir(), name), R_OK);
+      return join(homedir(), name);
+    } catch { /* rc not found */ }
+  }
+  return join(homedir(), '.bashrc');
+}
 
 export async function showNetworkStatus() {
   const env = await detectCapabilities();
@@ -15,36 +31,33 @@ export async function showNetworkStatus() {
   console.log(`  ${c.boldCyan('Platform')}`);
   console.log(`    OS:           ${env.os}${env.isWSL ? ` (WSL${env.wslVersion})` : ''}`);
   if (env.isWSL) {
-    console.log(`    WSL mode:     ${env.wslNetworkMode}`);
+    const mode = detectWslNetworkMode();
+    console.log(`    WSL mode:     ${mode || 'unknown'}`);
   }
 
   console.log(``);
   console.log(`  ${c.boldCyan('Proxy')}`);
-  const proxy = env.proxy;
+  const proxy = detectExistingProxy();
   for (const [k, v] of Object.entries(proxy)) {
     console.log(`    ${k.padEnd(15)} ${v ? c.gray(v) : c.gray('not set')}`);
   }
 
   console.log(``);
   console.log(`  ${c.boldCyan('Connectivity')}`);
-
-  const targets = [
-    { name: 'GitHub', url: 'https://github.com' },
-    { name: 'npm Registry', url: 'https://registry.npmjs.org' },
-    { name: 'npm Official', url: 'https://www.npmjs.com' },
-    { name: 'Google', url: 'https://www.google.com' },
-  ];
-
-  for (const t of targets) {
-    const start = Date.now();
-    const r = await run('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', '--connect-timeout', '5', t.url], { timeout: 8000 });
-    const ms = Date.now() - start;
-    if (r.exitCode === 0) {
-      const color = ms < 200 ? c.green : ms < 500 ? c.yellow : c.red;
-      ok(`${t.name.padEnd(20)} HTTP ${r.stdout} ${color(`${ms}ms`)}`);
+  const results = await checkConnectivity();
+  for (const r of results) {
+    if (r.status === 'ok') {
+      ok(`${r.name.padEnd(20)} ${r.http.code} (${r.http.ms}ms)`);
     } else {
-      fail(`${t.name.padEnd(20)} unreachable`);
+      fail(`${r.name.padEnd(20)} ${r.http.error || 'unreachable'}`);
     }
+  }
+
+  console.log(``);
+  console.log(`  ${c.boldCyan('Mirrors')}`);
+  for (const m of allMirrors()) {
+    const status = m.enabled ? c.green('enabled') : c.gray('disabled');
+    console.log(`    ${m.id.padEnd(20)} ${status} ${c.gray(m.baseUrl)}`);
   }
 
   divider();
@@ -59,18 +72,15 @@ export async function configureNetwork() {
   console.log(`  ${c.boldWhite('Network Configuration')}`);
   console.log(``);
 
-  const proxy = detectProxyEnv();
   if (env.isWSL) {
     console.log(`  ${c.boldCyan('WSL Network')}`);
-    console.log(`    Current mode: ${env.wslNetworkMode}`);
-    if (env.wslNetworkMode !== 'mirrored') {
+    const mode = detectWslNetworkMode();
+    console.log(`    Current mode: ${mode || 'unknown'}`);
+    if (mode !== 'mirrored') {
       warn('Mirrored networking not active');
-      info('Add to Windows %USERPROFILE%\\.wslconfig:');
+      info('Add to %USERPROFILE%\\.wslconfig:');
       console.log(``);
-      console.log(`    ${c.gray('[wsl2]')}`);
-      console.log(`    ${c.gray('networkingMode=mirrored')}`);
-      console.log(`    ${c.gray('autoProxy=true')}`);
-      console.log(`    ${c.gray('dnsTunneling=true')}`);
+      console.log(buildWslConfig('mirrored').split('\n').map((l) => `    ${c.gray(l)}`).join('\n'));
       console.log(``);
       info('Then run: wsl --shutdown');
     } else {
@@ -79,18 +89,10 @@ export async function configureNetwork() {
   }
 
   console.log(`  ${c.boldCyan('Proxy')}`);
-  const host = proxy.http_proxy ? new URL(proxy.http_proxy).hostname : '127.0.0.1';
-  const port = proxy.http_proxy ? parseInt(new URL(proxy.http_proxy).port) : 10808;
+  const proxy = detectExistingProxy();
   console.log(`    Detected proxy: ${proxy.http_proxy || c.gray('none')}`);
-  console.log(`    Default host:   ${host}`);
-  console.log(`    Default port:   ${port}`);
-  console.log(``);
-  info('To configure proxy, set environment variables:');
-  console.log(`    ${c.cyan('export http_proxy=http://127.0.0.1:10808')}`);
-  console.log(`    ${c.cyan('export https_proxy=http://127.0.0.1:10808')}`);
-  console.log(``);
-  info('Or run proxy_on if you have the proxy function in your shell rc.');
-  console.log(``);
+  console.log(`    Scanning common ports: ${COMMON_PORTS.join(', ')}`);
+  info('Port scanning requires net access; run "occier network test" for connectivity.');
 
   const config = await readConfig();
   config.networkConfigured = true;
@@ -107,13 +109,7 @@ export async function testNetwork() {
   console.log(`  ${c.boldWhite('Network Test')}`);
   console.log(``);
 
-  const targets = [
-    { name: 'GitHub', url: 'https://github.com' },
-    { name: 'npm Registry', url: 'https://registry.npmjs.org' },
-    { name: 'Google', url: 'https://www.google.com' },
-  ];
-
-  const proxy = detectProxyEnv();
+  const proxy = detectExistingProxy();
   if (proxy.http_proxy) {
     console.log(`  ${c.gray('Using proxy:')} ${proxy.http_proxy}`);
   } else {
@@ -121,23 +117,103 @@ export async function testNetwork() {
   }
   console.log(``);
 
-  for (const t of targets) {
-    console.log(`  ${c.boldCyan('→')} ${t.name}`);
-    console.log(`    URL: ${c.gray(t.url)}`);
-
-    const start = Date.now();
-    const r = await run('curl', ['-s', '-o', '/dev/null', '-w', `HTTP %{http_code} | %{time_total}s | %{speed_download}B/s`, '--connect-timeout', '5', t.url], { timeout: 10000 });
-    const ms = Date.now() - start;
-
-    if (r.exitCode === 0) {
-      console.log(`    ${c.green('✓')} ${r.stdout}`);
-    } else if (r.exitCode === -1) {
-      console.log(`    ${c.red('✗')} Connection failed (command not found)`);
-    } else {
-      console.log(`    ${c.red('✗')} ${r.stderr || 'Connection failed'}`);
-    }
-    console.log(`    ${c.gray(`Time: ${ms}ms`)}`);
+  const results = await checkConnectivity();
+  for (const r of results) {
+    console.log(`  ${c.boldCyan('→')} ${r.name}`);
+    console.log(`    URL:       ${c.gray(r.url)}`);
+    console.log(`    DNS:       ${r.dns.pass ? c.green(`${r.dns.ms}ms`) : c.red('fail')}`);
+    console.log(`    HTTP:      ${r.http.pass ? c.green(`${r.http.code} (${r.http.ms}ms)`) : c.red(`${r.http.error || r.http.code}`)}`);
     console.log(``);
+  }
+
+  console.log(`  ${c.boldCyan('Port Scan')}`);
+  info('To check proxy ports, ensure node:net is available:');
+  console.log(`    ${c.cyan('occier doctor')}`);
+  console.log(``);
+
+  divider();
+  console.log(``);
+}
+
+export async function configureProxy() {
+  const { input, select, password } = await import('@inquirer/prompts');
+
+  console.log(``);
+  divider();
+  console.log(`  ${c.boldWhite('Proxy Configuration')}`);
+  console.log(``);
+
+  const protocol = await select({
+    message: 'Proxy protocol:',
+    choices: [
+      { name: 'HTTP', value: 'http' },
+      { name: 'SOCKS5', value: 'socks5' },
+    ],
+  });
+
+  const host = await input({
+    message: 'Proxy host:',
+    default: '127.0.0.1',
+  });
+
+  const port = await input({
+    message: 'Proxy port:',
+    default: '10808',
+    validate: (v) => !isNaN(parseInt(v)) || 'Must be a number',
+  });
+
+  const useAuth = await select({
+    message: 'Authentication required?',
+    choices: [
+      { name: 'No', value: false },
+      { name: 'Yes', value: true },
+    ],
+  });
+
+  let username = '';
+  let pw = '';
+  if (useAuth) {
+    username = await input({ message: 'Username:' });
+    pw = await password({ message: 'Password:', mask: true });
+  }
+
+  const persist = await select({
+    message: 'Apply to:',
+    choices: [
+      { name: 'Current session only', value: 'session' },
+      { name: 'Shell rc file', value: 'shell' },
+      { name: 'Both', value: 'both' },
+    ],
+  });
+
+  if (persist === 'session' || persist === 'both') {
+    const env = buildProxyEnv(protocol, host, parseInt(port), username, pw);
+    Object.assign(process.env, env);
+    ok('Applied to current session');
+  }
+
+  if (persist === 'shell' || persist === 'both') {
+    const rcPath = await getRcPath();
+    const block = buildShellRcBlock(protocol, host, parseInt(port), username, pw);
+    await injectShellRc(rcPath, block);
+    ok(`Written to ${rcPath}`);
+    info(`Run: source ${rcPath.split('/').pop()}`);
+  }
+
+  divider();
+  console.log(``);
+}
+
+export async function showMirrors() {
+  console.log(``);
+  divider();
+  console.log(`  ${c.boldWhite('Mirror Registry')}`);
+  console.log(``);
+
+  for (const m of allMirrors()) {
+    const status = m.enabled ? c.green('●') : c.gray('○');
+    const official = m.official ? c.gray('(official)') : c.yellow('(mirror)');
+    console.log(`  ${status} ${m.id.padEnd(20)} ${official} ${c.gray(m.baseUrl)}`);
   }
 
   divider();
