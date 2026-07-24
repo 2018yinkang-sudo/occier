@@ -1,0 +1,7 @@
+.git
+.gitignore
+.npmignore
+node_modules/
+CLAUDE.md
+*.zip
+*.log
