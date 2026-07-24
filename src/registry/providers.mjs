@@ -99,6 +99,34 @@ const BUILTIN_PROVIDERS = [
     defaultModel: "glm-4",
     claudeEnv: {},
   },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    description: "Multi-provider aggregator",
+    protocol: "openai",
+    authType: "api_key",
+    envVarName: "OPENROUTER_API_KEY",
+    baseURL: "https://openrouter.ai/api/v1",
+    healthUrl: "https://openrouter.ai/api/v1/models",
+    models: [],
+    defaultModel: "anthropic/claude-sonnet-4.5",
+    claudeEnv: {
+      ANTHROPIC_BASE_URL: "https://openrouter.ai/api/v1",
+    },
+  },
+  {
+    id: "openai-compatible",
+    label: "OpenAI Compatible",
+    description: "Any OpenAI-compatible API endpoint",
+    protocol: "openai",
+    authType: "api_key",
+    envVarName: "CUSTOM_API_KEY",
+    baseURL: "",
+    healthUrl: null,
+    models: [],
+    defaultModel: null,
+    claudeEnv: {},
+  },
 ];
 
 const providerRegistry = new Registry();

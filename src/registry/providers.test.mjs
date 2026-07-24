@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { getProvider, getProviderSafe, allProviders, providerChoices } from "./providers.mjs";
 
 describe("provider registry", () => {
-  it("has 5 built-in providers", () => {
-    expect(allProviders()).toHaveLength(5);
+  it("has 7 built-in providers", () => {
+    expect(allProviders()).toHaveLength(7);
   });
 
   it("deepseek has expected properties", () => {
@@ -45,7 +45,7 @@ describe("provider registry", () => {
 
   it("providerChoices returns formatted choices", () => {
     const choices = providerChoices();
-    expect(choices).toHaveLength(5);
+    expect(choices).toHaveLength(7);
     for (const c of choices) {
       expect(c).toHaveProperty("name");
       expect(c).toHaveProperty("value");
