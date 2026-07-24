@@ -1,20 +1,21 @@
-# ociier — Claude Code Multi-Provider CLI
+# occier — Claude Code Multi-Provider CLI
 
-OpenClaw-style interactive CLI for Claude Code with DeepSeek, Kimi, and Anthropic providers. One command: `occier`.
+One command to switch Claude Code between DeepSeek, Kimi, and Anthropic providers.  
+No config files to edit by hand. No env vars to remember.
 
 ## Quick Start
 
 ```bash
-# Install globally
+# Install
 npm install -g github:2018yinkang-sudo/occier
 
 # Run setup wizard
 occier config
 
-# Launch with interactive provider selection
+# Launch (interactive picker)
 occier
 
-# Or pick a provider directly
+# Launch directly
 occier deepseek
 occier kimi
 occier anthropic
@@ -23,101 +24,88 @@ occier anthropic
 ## Commands
 
 | Command | Description |
-|---------|-------------|
-| `occier` | Interactive provider selection → launch Claude Code |
+|---|---|
+| `occier` | Interactive provider picker → launch Claude Code |
 | `occier deepseek` | Quick-launch with DeepSeek |
 | `occier kimi` | Quick-launch with Kimi |
-| `occier anthropic` | Quick-launch with Anthropic |
-| `occier status` | Show current configuration |
-| `occier health` | Run system & provider health checks |
+| `occier anthropic` | Quick-launch with Anthropic (API or claude.ai login) |
+| `occier status` | Show configuration state |
+| `occier health` | System health check + provider API connectivity |
 | `occier config` | Interactive setup wizard |
-| `occier config set-key` | Update a specific API key |
-| `occier config reset` | Reset all configuration |
-| `occier config show` | Show config file locations & keys |
-| `occier remove` | Remove all configuration |
+| `occier config set-key` | Update a single API key |
+| `occier config reset` | Delete all configuration |
+| `occier config show` | Print config file paths and masked keys |
+| `occier fix-path` | Add `~/.local/bin` to shell rc |
+| `occier remove` | Full configuration cleanup |
+| `occier --help` | Usage help |
+| `occier --version` | Print version |
 
-## Directory Structure
+## How It Works
 
-```text
-occier/
-├── package.json
-├── bin/
-│   └── occier.mjs            # Entry point
-├── src/
-│   ├── cli.mjs               # CLI routing
-│   ├── tui.mjs               # Terminal UI helpers
-│   ├── paths.mjs             # Path resolution
-│   ├── config-io.mjs         # Config read/write
-│   ├── launch.mjs            # Claude Code launcher
-│   ├── checks.mjs            # Health checks
-│   ├── providers/
-│   │   └── registry.mjs      # Provider definitions
-│   └── commands/
-│       ├── select.mjs         # Interactive selection
-│       ├── launch.mjs         # Direct launch
-│       ├── status.mjs         # Config display
-│       ├── health.mjs         # Health checks
-│       ├── setup-wizard.mjs   # Config wizard
-│       └── remove.mjs         # Cleanup
-├── config/
-│   └── providers.env.example
-├── CLAUDE.md
-└── README.md
-```
+occier stores API keys in `~/.config/claude-code/providers.env` (permissions `600`).  
+When you launch a provider, it sets the appropriate environment variables and spawns the `claude` CLI:
 
-## Configuration
+| Provider | Environment Override |
+|---|---|
+| DeepSeek | `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` |
+| Kimi | `ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic` |
+| Anthropic | Native — uses `ANTHROPIC_API_KEY` or claude.ai OAuth login |
 
-Configuration is stored at `~/.config/claude-code/`:
-
-- `config.json` — ociier state
-- `providers.env` — API keys (permissions: 600)
-
-## Prerequisites
-
-- Node.js >= 18
-- Claude Code installed: `claude --version`
+This works because Claude Code supports custom Anthropic-compatible API endpoints.
 
 ## Provider Details
 
 ### DeepSeek
-- Endpoint: `https://api.deepseek.com/anthropic`
-- Model: `deepseek-v4-pro[1m]` / `deepseek-v4-flash`
-- Best for: backend, architecture, debugging, refactoring
+- **Endpoint:** `https://api.deepseek.com/anthropic`
+- **Models:** `deepseek-v4-pro[1m]` (default), `deepseek-v4-flash` (subagent)
+- **Best for:** backend, architecture, debugging, refactoring
+- **API key:** DeepSeek Platform → API Keys
 
 ### Kimi
-- Endpoint: `https://api.moonshot.cn/anthropic`
-- Model: `kimi-k3[1m]`
-- Best for: frontend, design, visual, UI/UX
-- **Note:** Use Kimi API Open Platform key, NOT Kimi Code subscription key
+- **Endpoint:** `https://api.moonshot.cn/anthropic`
+- **Model:** `kimi-k3[1m]`
+- **Best for:** frontend, design, visual, UI/UX
+- **API key:** Kimi API Open Platform (NOT Kimi Code subscription key)
 
 ### Anthropic
-- Official Claude API or claude.ai login
-- Set `ANTHROPIC_API_KEY_OFFICIAL` for API billing, or leave blank for login flow
+- Official Claude API or claude.ai subscription login
+- Set `ANTHROPIC_API_KEY_OFFICIAL` for API billing, or leave blank for OAuth login flow
+
+## Configuration
+
+```
+~/.config/claude-code/
+├── config.json       # occier state (tracking, preferences)
+└── providers.env     # API keys (chmod 600)
+```
+
+## Prerequisites
+
+- **Node.js** >= 18
+- **Claude Code** CLI installed (`claude --version` must succeed)
+- At least one provider API key
 
 ## Security
 
-- `providers.env` stores real API keys — permissions always 600
+- API keys are stored with `600` permissions, config directory with `700`
 - Never commit, screenshot, or share API keys
-- Do not sync config directory to cloud storage
-- Use `occier remove` for complete cleanup
+- `occier remove` wipes all config and PATH entries for a clean slate
 
 ## Troubleshooting
 
 ```bash
-# Check system health
-occier health
-
-# View current config
-occier status
-
-# Reset and start fresh
-occier config reset
-occier health
+occier health       # Run system checks
+occier status       # View current config
+occier config reset # Wipe config and start over
 ```
 
 ## Uninstall
 
 ```bash
 occier remove
-npm uninstall -g ociier
+npm uninstall -g occier
 ```
+
+## License
+
+MIT

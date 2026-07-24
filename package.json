@@ -1,6 +1,6 @@
 {
   "name": "occier",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Claude Code multi-provider CLI — OpenClaw-style interactive TUI",
   "type": "module",
   "bin": {
