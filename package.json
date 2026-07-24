@@ -1,0 +1,26 @@
+{
+  "name": "occier",
+  "version": "1.0.0",
+  "description": "Claude Code multi-provider CLI — OpenClaw-style interactive TUI",
+  "type": "module",
+  "bin": {
+    "occier": "./bin/occier.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "config/"
+  ],
+  "keywords": ["claude-code", "deepseek", "kimi", "anthropic", "cli", "ai"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/2018yinkang-sudo/occier.git"
+  }
+}
