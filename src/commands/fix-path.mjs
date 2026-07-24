@@ -28,7 +28,7 @@ export async function fixPath() {
       modified = name;
       found = true;
       break;
-    } catch {}
+    } catch { /* file not found, skip */ }
   }
 
   if (!found) {

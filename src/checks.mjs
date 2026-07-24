@@ -89,7 +89,7 @@ export async function checkShellRcPath() {
       const p = join(HOME, name);
       await access(p, R_OK);
       found.push(p);
-    } catch {}
+    } catch { /* file not found, skip */ }
   }
   return { pass: found.length > 0, detail: found.map(p => p.split('/').pop()).join(', ') || 'none' };
 }

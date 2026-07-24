@@ -7,7 +7,11 @@
     "occier": "./bin/occier.mjs"
   },
   "scripts": {
-    "postinstall": "node scripts/postinstall.mjs"
+    "postinstall": "node scripts/postinstall.mjs",
+    "lint": "eslint src/ bin/ scripts/",
+    "test": "vitest run",
+    "ci": "npm run lint && npm test",
+    "prepublishOnly": "npm run ci"
   },
   "engines": {
     "node": ">=18"
@@ -21,10 +25,22 @@
     "config/",
     "scripts/"
   ],
-  "keywords": ["claude-code", "deepseek", "kimi", "anthropic", "cli", "ai"],
+  "keywords": [
+    "claude-code",
+    "deepseek",
+    "kimi",
+    "anthropic",
+    "cli",
+    "ai"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/2018yinkang-sudo/occier.git"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "vitest": "^4.1.10"
   }
 }

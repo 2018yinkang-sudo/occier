@@ -1,5 +1,5 @@
 import { homedir } from 'os';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { readFileSync, writeFileSync, accessSync, R_OK } from 'fs';
 
 const HOME = homedir();
@@ -10,7 +10,7 @@ function getShellRcFiles() {
     try {
       accessSync(join(HOME, name), R_OK);
       files.push(name);
-    } catch {}
+    } catch { /* file not found, skip */ }
   }
   return files.length > 0 ? files : ['.bashrc'];
 }
@@ -30,7 +30,7 @@ function addToShellRc(binDir) {
       }
       writeFileSync(rc, `${content.trimEnd()}\n\n# Added by ociier\nexport PATH="${binDir}:$PATH"\n`);
       return { name, existed: false };
-    } catch {}
+    } catch { /* write failed, skip */ }
   }
   return null;
 }

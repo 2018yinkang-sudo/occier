@@ -18,7 +18,7 @@ export function shellRcPath() {
     try {
       accessSync(p, R_OK);
       return p;
-    } catch {}
+    } catch { /* file not found, skip */ }
   }
   return join(HOME, '.bashrc');
 }

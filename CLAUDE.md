@@ -460,7 +460,21 @@ For screenshot-based implementation:
 
 ---
 
-## 11. Testing Standards
+## 11. Testing Standards (project-specific)
+
+Tests use **Vitest** (v4+), an ESM-native test runner. Test files live alongside source files with the `*.test.mjs` suffix.
+
+```
+src/providers/registry.mjs        →  src/providers/registry.test.mjs
+src/launch.mjs                     →  src/launch.test.mjs
+```
+
+### Rules
+
+- Run `npm test` before completing work.
+- Use `vi` (Vitest's mock utility) for mocking; `vi.spyOn()` for spying, `vi.stubGlobal()` for globals, `vi.fn()` for mock functions.
+- Avoid mocking the filesystem unless necessary — prefer temporary directories.
+- Use `describe`/`it` blocks; use `expect` for assertions.
 
 Tests should protect behavior, not implementation trivia.
 
@@ -481,6 +495,13 @@ Do not delete or weaken tests solely to make the suite pass.
 When fixing a bug, add a regression test when feasible.
 
 Mocks should model the real contract accurately and remain narrowly scoped.
+
+### Running tests
+
+```bash
+npm test              # run once (vitest run)
+npm run ci            # lint + test
+```
 
 ---
 
@@ -652,7 +673,77 @@ When reviewing another agent's work:
 
 ---
 
-## 20. Definition of Done
+## 20. Linting
+
+ESLint v10 with flat config (`eslint.config.js`) enforces code quality. The config inherits `@eslint/js/recommended` and targets all `*.mjs` files under `src/`, `bin/`, `scripts/`.
+
+### Rules
+
+- Unused variables are errors (`no-unused-vars`), except when the name starts with `_`.
+- `no-console` is off — this is a CLI tool, `console.log` is expected.
+- Empty catch blocks are errors — use `catch { /* explain why ignore */ }` instead of bare `catch {}`.
+- Global variables (`process`, `console`, `setTimeout`, `clearTimeout`, `AbortController`, `fetch`) are declared in the eslint config.
+
+### Running
+
+```bash
+npm run lint              # check src/ bin/ scripts/
+npm run ci                # lint + test (run before push)
+```
+
+Before committing, always run `npm run lint` and fix all errors. Do not suppress lint rules without justification.
+
+---
+
+## 21. CI/CD and Publishing
+
+### GitHub Actions Workflows
+
+**`.github/workflows/ci.yml`** — triggered on push/PR to `main`:
+- Matrix test across Node.js 18, 20, 22
+- Runs `npm ci → lint → test`
+
+**`.github/workflows/publish.yml`** — triggered on tag push matching `v*`:
+- Runs lint + test
+- Publishes to npm registry using `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`
+
+### Release Flow
+
+```
+1. Develop on branch → open PR to main
+2. CI runs automatically (lint + test on 3 Node versions)
+3. Merge to main
+4. npm version patch    # or minor / major
+5. git push --follow-tags
+6. Publish workflow triggers automatically → npm publish
+```
+
+### Versioning
+
+Use `npm version <patch|minor|major>` to bump the version. This automatically:
+- Updates `version` in `package.json`
+- Creates a git commit with the version message
+- Creates an annotated git tag (e.g., `v1.2.0`)
+
+Do not manually edit the version field in `package.json`.
+
+### NPM Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `npm test` | Run vitest once |
+| `npm run lint` | ESLint check |
+| `npm run ci` | lint + test (full pre-push check) |
+
+The `prepublishOnly` hook runs `npm run ci` automatically before every `npm publish`, preventing broken releases.
+
+### NPM Token
+
+The repository requires a GitHub Secret named `NPM_TOKEN` containing an npm Automation Token (no 2FA, for CI usage). Generate one at `https://www.npmjs.com/settings/<user>/tokens`, type: Automation.
+
+---
+
+## 22. Definition of Done
 
 A task is complete only when all applicable items are satisfied:
 

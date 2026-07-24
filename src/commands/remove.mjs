@@ -1,6 +1,6 @@
 import { confirm } from '@inquirer/prompts';
 import { rm, readFile, writeFile, readdir, rmdir } from 'fs/promises';
-import { ENV_FILE, CONFIG_FILE, CC_CONFIG_DIR, HOME } from '../paths.mjs';
+import { ENV_FILE, CONFIG_FILE, CC_CONFIG_DIR } from '../paths.mjs';
 import { shellRcPath } from '../paths.mjs';
 import { c } from '../tui.mjs';
 
@@ -67,8 +67,7 @@ export async function runRemove() {
     } else {
       console.log(`  ${c.gray('○')} Config directory not empty (preserved)`);
     }
-  } catch {
-  }
+  } catch { /* dir cannot be read, skip */ }
 
   console.log(`\n  ${c.bold('Run the following to uninstall the npm package:')}`);
   console.log(`  ${c.cyan('npm uninstall -g ociier')}`);

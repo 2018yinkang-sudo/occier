@@ -1,6 +1,5 @@
 import { checkClaudeInstalled, checkProvidersEnv, checkEnvFilePerms, checkConfigDirPerms, checkShellRcPath } from '../checks.mjs';
-import { allProviders, getProvider } from '../providers/registry.mjs';
-import { readProvidersEnv } from '../config-io.mjs';
+import { allProviders } from '../providers/registry.mjs';
 import { checkProviderConnectivity } from '../checks.mjs';
 import { c, divider } from '../tui.mjs';
 
@@ -56,7 +55,6 @@ export async function runHealthCheck() {
   console.log('');
 
   const provResults = await checkProvidersEnv();
-  const entries = await readProvidersEnv();
 
   for (const p of allProviders()) {
     const provStatus = provResults[p.id];

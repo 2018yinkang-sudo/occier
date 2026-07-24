@@ -1,4 +1,4 @@
-import { c, banner } from './tui.mjs';
+import { c } from './tui.mjs';
 
 const HELP = `
   ${c.boldCyan('occier')} ${c.gray('— Claude Code multi-provider CLI')}

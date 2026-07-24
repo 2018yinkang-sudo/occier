@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { homedir } from 'os';
-import { join, dirname } from 'path';
+import { join } from 'path';
 
 async function checkPath() {
   const HOME = homedir();

@@ -3,10 +3,6 @@ import { readProvidersEnv, writeProvidersEnv, readConfig, writeConfig, providers
 import { allProviders, getProvider } from '../providers/registry.mjs';
 import { c, banner } from '../tui.mjs';
 
-function providerLabel(id) {
-  return getProvider(id).label;
-}
-
 export async function runSetup() {
   banner();
   console.log(`  ${c.boldWhite('Setup Wizard')}`);
@@ -122,8 +118,8 @@ export async function resetConfig() {
   const { rm } = await import('fs/promises');
   const { ENV_FILE, CONFIG_FILE } = await import('../paths.mjs');
 
-  try { await rm(ENV_FILE, { force: true }); } catch {}
-  try { await rm(CONFIG_FILE, { force: true }); } catch {}
+  try { await rm(ENV_FILE, { force: true }); } catch { /* file not found, skip */ }
+  try { await rm(CONFIG_FILE, { force: true }); } catch { /* file not found, skip */ }
 
   console.log(`\n  ${c.green('✓')} Configuration reset.\n`);
 }
