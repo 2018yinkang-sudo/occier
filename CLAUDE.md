@@ -600,6 +600,8 @@ Never create a Pull Request on GitHub without the user's explicit command. Mergi
 
 Before completion, inspect the final diff.
 
+After committing, push the branch to remote immediately. Keep local and remote always in sync.
+
 ---
 
 ## 17. Tool and Command Safety
