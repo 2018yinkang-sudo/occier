@@ -1,10 +1,14 @@
-import { getProvider } from '../registry/providers.mjs';
+import { getProviderSafe } from '../registry/providers.mjs';
 import { createStore } from '../store/credential-store.mjs';
 import { launchClaude } from '../launch.mjs';
 import { c } from '../tui.mjs';
 
 export async function directLaunch(providerId) {
-  const provider = getProvider(providerId);
+  const provider = getProviderSafe(providerId);
+  if (!provider) {
+    console.error(`\n  ${c.red('Error:')} Unknown provider: ${providerId}\n`);
+    process.exit(1);
+  }
   const store = createStore();
   const data = await store.get(provider.envVarName.toLowerCase());
   const key = data?.value || null;

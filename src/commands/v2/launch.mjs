@@ -87,24 +87,33 @@ export async function runLaunch(args) {
     launchClaude(envVars, filterLaunchArgs(args));
   } else if (tool === 'opencode') {
     const store = createStore();
-
     const { allProviders } = await import('../../registry/providers.mjs');
     const envVars = { ...process.env };
 
-    if (providerId) {
-      const p = getProviderSafe(providerId);
-      if (p) {
-        const data = await store.get(p.envVarName.toLowerCase());
-        if (data?.value) {
-          envVars[p.envVarName] = data.value;
-        }
+    if (!providerId) {
+      const entries = await store.list();
+      const configured = allProviders().filter((p) =>
+        entries.some((e) => e.key === p.envVarName.toLowerCase()),
+      );
+      if (configured.length === 0) {
+        console.error(`\n  ${c.red('Error:')} No providers configured. Run ${c.cyan('occier provider connect')}.\n`);
+        process.exit(1);
       }
-    } else {
-      for (const p of allProviders()) {
-        const data = await store.get(p.envVarName.toLowerCase());
-        if (data?.value) {
-          envVars[p.envVarName] = data.value;
-        }
+      const { select } = await import('@inquirer/prompts');
+      providerId = await select({
+        message: 'Select provider:',
+        choices: configured.map((p) => ({
+          name: `${p.label.padEnd(14)} ${p.description}`,
+          value: p.id,
+        })),
+      });
+    }
+
+    const provider = getProviderSafe(providerId);
+    if (provider) {
+      const data = await store.get(provider.envVarName.toLowerCase());
+      if (data?.value) {
+        envVars[provider.envVarName] = data.value;
       }
     }
 

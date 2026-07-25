@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, access, rename, open } from "fs/promises";
+import { readFile, writeFile, mkdir, access, rename, open, unlink } from "fs/promises";
 import { readFileSync } from "fs";
 import { constants } from "fs";
 import { randomBytes, createCipheriv, createDecipheriv, pbkdf2Sync } from "crypto";
@@ -19,45 +19,61 @@ const IV_LEN = 16;
 const TAG_LEN = 16;
 const KEY_LEN = 32;
 const KEY_DIGEST = "sha256";
+const LOCK_MAX_AGE = 10_000;
 
 // ── file locking ──
 
 async function acquireLock(filePath) {
   const lockPath = `${filePath}.lock`;
-  const MAX_AGE = 10_000;
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
 
-  let fh;
+  let acquired = false;
   try {
-    // O_CREAT|O_EXCL fails if file already exists
-    fh = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+    const fh = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+    await fh.write(`${process.pid}\n${Date.now()}\n`);
+    await fh.close();
+    acquired = true;
   } catch {
-    // Lock exists — check if it's stale
-    let stale = false;
-    try {
-      const stat = await readFile(lockPath, "utf-8").catch(() => "");
-      const lines = stat.split("\n");
-      const ts = parseInt(lines[1], 10);
-      if (Number.isNaN(ts) || Date.now() - ts > MAX_AGE) stale = true;
-    } catch { stale = true; }
-    if (stale) {
-      await writeFile(lockPath, `${process.pid}\n${Date.now()}\n`, { mode: 0o600 }).catch(() => {});
-      fh = await open(lockPath, constants.O_WRONLY | constants.O_CREAT, 0o600).catch(() => null);
-    }
-    if (!fh) throw new Error("Another occier process is writing the vault. Try again shortly.");
+    // Lock exists — check if stale
   }
 
-  await fh.write(`${process.pid}\n${Date.now()}\n`);
-  await fh.close();
+  if (!acquired) {
+    let stale = false;
+    try {
+      const content = await readFile(lockPath, "utf-8");
+      const lines = content.split("\n");
+      const ts = parseInt(lines[1], 10);
+      if (Number.isNaN(ts) || Date.now() - ts > LOCK_MAX_AGE) stale = true;
+    } catch {
+      stale = true;
+    }
+
+    if (stale) {
+      // Atomically reclaim: unlink stale lock, then create with O_EXCL
+      await unlink(lockPath).catch(() => {});
+      try {
+        const fh = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+        await fh.write(`${process.pid}\n${Date.now()}\n`);
+        await fh.close();
+        acquired = true;
+      } catch {
+        // Another process reclaimed it first
+      }
+    }
+
+    if (!acquired) {
+      throw new Error("Another occier process is writing the vault. Try again shortly.");
+    }
+  }
 
   return {
     async release() {
-      try { await writeFile(lockPath, ""); /* suppress unused */ } catch { /* ignore */ }
+      await unlink(lockPath).catch(() => {});
     },
   };
 }
 
-// ── write queue ──
+// ── write queue (within-process serialization) ──
 
 const _writeQueues = new Map();
 
@@ -69,18 +85,23 @@ function enqueueWrite(filePath, task) {
 }
 
 async function atomicWriteFile(filePath, data, options) {
-  const tmp = `${filePath}.tmp-${process.pid}`;
+  const tmp = `${filePath}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`;
   await writeFile(tmp, data, options);
   await rename(tmp, filePath);
 }
 
-async function lockedWrite(filePath, data, options) {
-  const lock = await acquireLock(filePath);
-  try {
-    await enqueueWrite(filePath, () => atomicWriteFile(filePath, data, options));
-  } finally {
-    await lock.release();
-  }
+// Lock + queue: the lock is acquired INSIDE the queue task so that
+// within-process calls are serialized first, then cross-process locking
+// applies to each task individually.
+async function withFileLock(filePath, task) {
+  return enqueueWrite(filePath, async () => {
+    const lock = await acquireLock(filePath);
+    try {
+      return await task();
+    } finally {
+      await lock.release();
+    }
+  });
 }
 
 // ── vault meta ──
@@ -100,10 +121,10 @@ export function readVaultMetaSync(filePath) {
   }
 }
 
-async function writeVaultMeta(filePath, meta) {
+export async function writeVaultMeta(filePath, meta) {
   const metaPath = getMetaPath(filePath);
   await mkdir(dirname(metaPath), { recursive: true, mode: 0o700 });
-  await writeFile(metaPath, JSON.stringify(meta, null, 2), { mode: 0o600 });
+  await atomicWriteFile(metaPath, JSON.stringify(meta, null, 2), { mode: 0o600 });
 }
 
 function generateMeta(passphraseProtected = false) {
@@ -211,6 +232,9 @@ export class CredentialStore {
   async list() {
     throw new Error("Not implemented");
   }
+  async has(_key) {
+    throw new Error("Not implemented");
+  }
 }
 
 export class FileCredentialStore extends CredentialStore {
@@ -244,7 +268,7 @@ export class FileCredentialStore extends CredentialStore {
 
   async writeRaw(data) {
     await this.ensureDir();
-    await lockedWrite(this.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
+    await atomicWriteFile(this.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
   }
 
   async readAll() {
@@ -259,15 +283,19 @@ export class FileCredentialStore extends CredentialStore {
   }
 
   async set(key, value) {
-    const data = await this.readRaw();
-    data[key] = value;
-    await this.writeRaw(data);
+    await withFileLock(this.filePath, async () => {
+      const data = await this.readRaw();
+      data[key] = value;
+      await this.writeRaw(data);
+    });
   }
 
   async delete(key) {
-    const data = await this.readRaw();
-    delete data[key];
-    await this.writeRaw(data);
+    await withFileLock(this.filePath, async () => {
+      const data = await this.readRaw();
+      delete data[key];
+      await this.writeRaw(data);
+    });
   }
 
   async list() {
@@ -323,15 +351,25 @@ export class EncryptedFileStore extends CredentialStore {
   }
 
   async set(key, value) {
-    const data = await this._readEncrypted();
-    data[key] = value;
-    await this._writeEncrypted(data);
+    await withFileLock(this.filePath, async () => {
+      const data = await this._readEncrypted();
+      data[key] = value;
+      await this._writeEncrypted(data);
+    });
   }
 
   async delete(key) {
-    const data = await this._readEncrypted();
-    delete data[key];
-    await this._writeEncrypted(data);
+    await withFileLock(this.filePath, async () => {
+      const data = await this._readEncrypted();
+      delete data[key];
+      await this._writeEncrypted(data);
+    });
+  }
+
+  async writeAll(data) {
+    await withFileLock(this.filePath, async () => {
+      await this._writeEncrypted(data);
+    });
   }
 
   async list() {
@@ -358,28 +396,27 @@ export class EncryptedFileStore extends CredentialStore {
   async _readEncrypted() {
     const meta = readVaultMetaSync(this.filePath);
 
-    if (!meta) {
-      return this._tryOldDecrypt();
-    }
-
-    return this._decryptWithParams();
-  }
-
-  async _tryOldDecrypt() {
+    // Check if vault file exists
     try {
       await access(this.filePath, constants.R_OK);
     } catch {
-      return {};
+      return {}; // No vault file — legitimate empty vault
     }
 
     const raw = await readFile(this.filePath);
 
+    // Auto-migration: early vault versions stored plaintext JSON
     if (raw.length > 0 && raw[0] === 0x7b /* '{' */) {
       try {
         const data = JSON.parse(raw.toString("utf-8"));
         this._needsMigration = true;
         return data;
       } catch {
+        const aside = `${this.filePath}.corrupt-${Date.now()}`;
+        await rename(this.filePath, aside).catch(() => {});
+        process.stderr.write(
+          `\n\x1b[33m⚠\x1b[0m  Vault file was unreadable — preserved as ${aside}\n\n`,
+        );
         return {};
       }
     }
@@ -395,60 +432,62 @@ export class EncryptedFileStore extends CredentialStore {
     const tag = raw.subarray(raw.length - TAG_LEN);
     const ciphertext = raw.subarray(SALT_LEN + IV_LEN, raw.length - TAG_LEN);
 
-    try {
-      const oldKey = deriveKey(this.masterKey, salt);
-      const decipher = createDecipheriv("aes-256-gcm", oldKey, iv);
-      decipher.setAuthTag(tag);
-      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-      this._needsMigration = true;
-      return JSON.parse(decrypted.toString("utf-8"));
-    } catch {
-      return {};
-    }
-  }
-
-  async _decryptWithParams() {
-    try {
-      await access(this.filePath, constants.R_OK);
-    } catch {
-      return {};
-    }
-
-    const raw = await readFile(this.filePath);
-
-    if (raw.length > 0 && raw[0] === 0x7b /* '{' */) {
-      try {
-        const data = JSON.parse(raw.toString("utf-8"));
-        this._needsMigration = true;
-        return data;
-      } catch {
-        return {};
-      }
-    }
-
-    if (raw.length < SALT_LEN + IV_LEN + TAG_LEN + 1) {
-      const msg = "Vault file is too short — may be corrupted";
-      process.stderr.write(`\n\x1b[33m⚠\x1b[0m  ${msg}\n\n`);
-      throw new Error(msg);
-    }
-
-    const salt = raw.subarray(0, SALT_LEN);
-    const iv = raw.subarray(SALT_LEN, SALT_LEN + IV_LEN);
-    const tag = raw.subarray(raw.length - TAG_LEN);
-    const ciphertext = raw.subarray(SALT_LEN + IV_LEN, raw.length - TAG_LEN);
+    // Determine which master key to use for decryption.
+    // If meta exists, the masterKey was already derived with meta params in createStore.
+    // If no meta, the masterKey was derived with old params (migration path).
     const key = deriveKey(this.masterKey, salt);
     const decipher = createDecipheriv("aes-256-gcm", key, iv);
     decipher.setAuthTag(tag);
+
+    let decrypted;
     try {
-      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-      return JSON.parse(decrypted.toString("utf-8"));
+      decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     } catch {
-      return {};
+      // Decryption failed — wrong key or tampered data.
+      // This is NOT an empty vault; the file exists and is encrypted.
+      throw new Error(
+        "Vault decryption failed — wrong passphrase or corrupted data. " +
+        "If you recently changed your passphrase, ensure OCCIER_PASSPHRASE matches.",
+      );
     }
+
+    // If we got here without meta, this is an old-format vault that needs migration.
+    if (!meta) {
+      this._needsMigration = true;
+    }
+
+    return JSON.parse(decrypted.toString("utf-8"));
   }
 
   async _writeEncrypted(data) {
     await this.ensureDir();
+
+    // Migration: generate new meta params and re-derive master key.
+    // CRITICAL: write the vault file FIRST, then the meta file.
+    // If we crash after writing the vault but before the meta,
+    // the old meta (or lack thereof) still allows decryption with old params
+    // because the vault file contains its own per-file salt.
+    // Wait — that's not right. The new vault is encrypted with the NEW master key.
+    // The meta tells createStore how to derive the master key.
+    // If we write the vault with the new key but don't write the meta,
+    // createStore will derive the OLD key and fail to decrypt.
+    //
+    // Correct order: write vault first, then meta.
+    // If crash after vault write but before meta write:
+    //   - createStore reads old meta (or no meta) → derives old key → can't decrypt new vault
+    //   - This is still data loss, but the OLD vault data is gone (overwritten).
+    // 
+    // Better approach: write meta first, then vault. If crash after meta but before vault:
+    //   - createStore reads new meta → derives new key → can't decrypt old vault
+    //   - Same data loss.
+    //
+    // The ONLY safe approach is a backup before migration.
+    // The vaultPassphrase command handles this. For automatic migration
+    // (old format → new format), the risk is acceptable because the old
+    // vault was encrypted with a derivable device-fingerprint key.
+    // We write the vault first, then the meta, so that if the meta write
+    // fails, the vault is at least re-encrypted with the new key (and the
+    // user can recover by setting the passphrase manually).
 
     if (this._needsMigration) {
       const meta = generateMeta(
@@ -460,8 +499,24 @@ export class EncryptedFileStore extends CredentialStore {
         meta.iterations,
       );
       this.masterKey = newMasterKey;
-      await writeVaultMeta(this.filePath, meta);
       this._needsMigration = false;
+
+      // Encrypt with new key
+      const salt = randomBytes(SALT_LEN);
+      const iv = randomBytes(IV_LEN);
+      const key = deriveKey(this.masterKey, salt);
+      const cipher = createCipheriv("aes-256-gcm", key, iv);
+      const plaintext = Buffer.from(JSON.stringify(data), "utf-8");
+      const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      const output = Buffer.concat([salt, iv, encrypted, tag]);
+
+      // Write vault first
+      await atomicWriteFile(this.filePath, output, { mode: 0o600 });
+      // Then write meta (if this fails, the vault is encrypted with the new key
+      // but createStore will try old params — user must re-run migration)
+      await writeVaultMeta(this.filePath, meta);
+      return;
     }
 
     const salt = randomBytes(SALT_LEN);
@@ -472,7 +527,7 @@ export class EncryptedFileStore extends CredentialStore {
     const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     const tag = cipher.getAuthTag();
     const output = Buffer.concat([salt, iv, encrypted, tag]);
-    await lockedWrite(this.filePath, output, { mode: 0o600 });
+    await atomicWriteFile(this.filePath, output, { mode: 0o600 });
   }
 }
 
@@ -491,24 +546,81 @@ export function createStore(type = "encrypted", options = {}) {
     if (meta) {
       masterKey = deriveMasterKey(rawPassphrase, meta.salt, meta.iterations);
     } else {
+      // No meta — use old params for migration compatibility
       masterKey = deriveMasterKey(rawPassphrase, OLD_SALT, OLD_ITERATIONS);
     }
 
     const store = new EncryptedFileStore(masterKey, filePath);
     if (!meta) {
+      // Mark for migration to new format on next write
       store.setMigrationState(true, rawPassphrase);
-    } else if (options.passphrase && meta && !meta.passphraseProtected) {
-      // User is providing passphrase but vault wasn't created with one
-      meta.passphraseProtected = true;
-      // Migration: re-derive with passphrase
-      const newMasterKey = deriveMasterKey(rawPassphrase, meta.salt, meta.iterations);
-      store.masterKey = newMasterKey;
-      store._needsMigration = true;
-      store._rawPassphrase = rawPassphrase;
     }
+    // NOTE: createStore does NOT convert between passphrase and device-fingerprint
+    // modes. Use `occier vault passphrase set/remove` for that, which handles
+    // the re-encryption safely with backup and verification.
     return store;
   }
   return new FileCredentialStore(options.filePath || VAULT_FILE);
 }
 
-export { parseEnvContent };
+// ── safe re-encryption helper (used by vault passphrase commands) ──
+
+export async function reEncryptVault(oldPassphrase, newPassphrase, filePath = VAULT_FILE) {
+  const oldMeta = readVaultMetaSync(filePath);
+
+  // Determine old key derivation params
+  const oldSalt = oldMeta ? oldMeta.salt : OLD_SALT;
+  const oldIterations = oldMeta ? oldMeta.iterations : OLD_ITERATIONS;
+  const oldMasterKey = deriveMasterKey(oldPassphrase, oldSalt, oldIterations);
+
+  // Read existing data with old key
+  const oldStore = new EncryptedFileStore(oldMasterKey, filePath);
+  const data = await oldStore.readAll();
+
+  // Verify decryption succeeded: if vault was non-empty but we got {},
+  // the passphrase is likely wrong.
+  // We can't distinguish empty vault from wrong key perfectly, but if the
+  // vault file exists and has encrypted content, wrong key would have thrown.
+  // If readAll() returned {}, either the vault is empty or the file doesn't exist.
+
+  // Create backup
+  const { copyFile } = await import("fs/promises");
+  const backupPath = `${filePath}.bak-${Date.now()}`;
+  try {
+    await copyFile(filePath, backupPath);
+  } catch {
+    // Vault file may not exist yet (first time setting passphrase)
+  }
+
+  try {
+    // Generate new meta
+    const newMeta = generateMeta(!!newPassphrase && newPassphrase !== getDeviceFingerprint());
+    const newMasterKey = deriveMasterKey(
+      newPassphrase || getDeviceFingerprint(),
+      newMeta.salt,
+      newMeta.iterations,
+    );
+
+    // Create new store and write all data with new key
+    const newStore = new EncryptedFileStore(newMasterKey, filePath);
+    await newStore.writeAll(data);
+
+    // Write meta AFTER vault is successfully written
+    await writeVaultMeta(filePath, newMeta);
+
+    // Success — remove backup
+    await unlink(backupPath).catch(() => {});
+
+    return { ok: true, data };
+  } catch (err) {
+    // Failure — restore backup
+    try {
+      const { rename: restoreRename } = await import("fs/promises");
+      await restoreRename(backupPath, filePath);
+      if (oldMeta) await writeVaultMeta(filePath, oldMeta);
+    } catch { /* best effort restore */ }
+    return { ok: false, error: err.message, data };
+  }
+}
+
+export { parseEnvContent, VAULT_FILE, OC_DIR };

@@ -1,6 +1,6 @@
 import { password, input, select, confirm } from '@inquirer/prompts';
 import { c, ok, divider } from '../../tui.mjs';
-import { createStore, maskValue } from '../../store/credential-store.mjs';
+import { createStore, maskValue, readVaultMetaSync, getDeviceFingerprint, reEncryptVault } from '../../store/credential-store.mjs';
 
 export async function vaultList() {
   const store = createStore();
@@ -128,7 +128,6 @@ export async function vaultPassphrase(...args) {
   }
 
   if (subcmd === 'status') {
-    const { readVaultMetaSync } = await import('../../store/credential-store.mjs');
     const meta = readVaultMetaSync();
     if (meta && meta.passphraseProtected) {
       console.log(`\n  Vault is ${c.green('passphrase-protected')}.\n`);
@@ -141,7 +140,17 @@ export async function vaultPassphrase(...args) {
   }
 
   if (subcmd === 'set') {
-    const passphrase = await password({
+    const meta = readVaultMetaSync();
+    const needsCurrent = meta && meta.passphraseProtected;
+
+    let oldPassphrase;
+    if (needsCurrent) {
+      oldPassphrase = await password({ message: 'Current passphrase:', mask: true });
+    } else {
+      oldPassphrase = process.env.OCCIER_PASSPHRASE || getDeviceFingerprint();
+    }
+
+    const newPassphrase = await password({
       message: 'New passphrase:',
       mask: true,
       validate: (v) => v.length >= 8 || 'Passphrase must be at least 8 characters',
@@ -149,80 +158,67 @@ export async function vaultPassphrase(...args) {
     await password({
       message: 'Confirm passphrase:',
       mask: true,
-      validate: (v) => v === passphrase || 'Passphrases do not match',
+      validate: (v) => v === newPassphrase || 'Passphrases do not match',
     });
 
-    const { createStore, readVaultMetaSync, getDeviceFingerprint, deriveMasterKey } =
-      await import('../../store/credential-store.mjs');
-    const { randomBytes } = await import('crypto');
-
-    const oldMeta = readVaultMetaSync();
-    const oldPassphrase = oldMeta && oldMeta.passphraseProtected
-      ? await password({ message: 'Current passphrase:', mask: true })
-      : getDeviceFingerprint();
-
-    const oldStore = createStore("encrypted", { passphrase: oldPassphrase });
-    const data = await oldStore.readAll();
-
-    const newMeta = {
-      version: 2,
-      kdf: "pbkdf2-sha256",
-      iterations: 600000,
-      salt: randomBytes(32).toString("base64"),
-      passphraseProtected: true,
-    };
-    deriveMasterKey(passphrase, newMeta.salt, newMeta.iterations);
-
-    const { writeFile, mkdir } = await import('fs/promises');
-    const { join } = await import('path');
-    const { homedir } = await import('os');
-    const VAULT_DIR = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "occier");
-    const metaPath = join(VAULT_DIR, "vault.enc.meta");
-
-    await mkdir(VAULT_DIR, { recursive: true, mode: 0o700 });
-    await writeFile(metaPath, JSON.stringify(newMeta, null, 2), { mode: 0o600 });
-
-    const newStore = createStore("encrypted", { passphrase });
-    for (const [key, value] of Object.entries(data)) {
-      await newStore.set(key, value);
+    const confirmed = await confirm({
+      message: 'Re-encrypt all credentials with the new passphrase?',
+      default: false,
+    });
+    if (!confirmed) {
+      console.log(`\n  Aborted.\n`);
+      return;
     }
 
-    ok("Passphrase set. Use OCCIER_PASSPHRASE env var to avoid re-entering.\n");
+    try {
+      const result = await reEncryptVault(oldPassphrase, newPassphrase);
+      if (result.ok) {
+        ok("Passphrase set. Use OCCIER_PASSPHRASE env var to avoid re-entering.\n");
+      } else {
+        console.error(`\n  ${c.red('Error:')} ${result.error}\n`);
+        console.error(`  ${c.yellow('Backup may exist at ~/.config/occier/vault.enc.bak-*')}\n`);
+      }
+    } catch (err) {
+      console.error(`\n  ${c.red('Error:')} ${err.message}\n`);
+    }
     return;
   }
 
   if (subcmd === 'remove') {
-    const { readVaultMetaSync, createStore } =
-      await import('../../store/credential-store.mjs');
     const meta = readVaultMetaSync();
     if (!meta || !meta.passphraseProtected) {
       console.log(`\n  Vault is not passphrase-protected.\n`);
       return;
     }
 
-    const passphrase = await password({
+    const oldPassphrase = await password({
       message: 'Current passphrase:',
       mask: true,
     });
 
-    const oldStore = createStore("encrypted", { passphrase });
-    const data = await oldStore.readAll();
-
-    meta.passphraseProtected = false;
-    const { writeFile, mkdir } = await import('fs/promises');
-    const { join } = await import('path');
-    const { homedir } = await import('os');
-    const VAULT_DIR = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "occier");
-    const metaPath = join(VAULT_DIR, "vault.enc.meta");
-    await mkdir(VAULT_DIR, { recursive: true, mode: 0o700 });
-    await writeFile(metaPath, JSON.stringify(meta, null, 2), { mode: 0o600 });
-
-    const newStore = createStore("encrypted");
-    for (const [key, value] of Object.entries(data)) {
-      await newStore.set(key, value);
+    const confirmed = await confirm({
+      message: 'Re-encrypt vault with device-fingerprint key?',
+      default: false,
+    });
+    if (!confirmed) {
+      console.log(`\n  Aborted.\n`);
+      return;
     }
 
-    ok("Passphrase removed. Vault now uses device-fingerprint key.\n");
+    // Explicitly use device fingerprint, NOT OCCIER_PASSPHRASE
+    const newPassphrase = getDeviceFingerprint();
+
+    try {
+      const result = await reEncryptVault(oldPassphrase, newPassphrase);
+      if (result.ok) {
+        ok("Passphrase removed. Vault now uses device-fingerprint key.\n");
+      } else {
+        console.error(`\n  ${c.red('Error:')} ${result.error}\n`);
+        console.error(`  ${c.yellow('Backup may exist at ~/.config/occier/vault.enc.bak-*')}\n`);
+      }
+    } catch (err) {
+      console.error(`\n  ${c.red('Error:')} ${err.message}\n`);
+    }
     return;
   }
 

@@ -85,7 +85,7 @@ export async function handleAction(_term, itemId) {
             password: true,
           },
           async continue(value) {
-            if (!value) return "Cancelled";
+            if (!value || value.length < 4) return "Error: Value must be at least 4 characters";
             return {
               select: {
                 prompt: "Credential type",

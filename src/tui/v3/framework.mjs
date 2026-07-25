@@ -453,7 +453,7 @@ function drawSelectModal() {
   const w = Number.isFinite(term.width) ? term.width : 80;
   const h = Number.isFinite(term.height) ? term.height : 24;
   const boxWidth = Math.min(58, w - 4);
-  const maxOptions = Math.min(choices.length, h - 8);
+  const maxOptions = Math.max(1, Math.min(choices.length, h - 8));
   const boxHeight = 4 + maxOptions; // top border + prompt + options + hint + bottom border
   const row = Math.floor((h - boxHeight) / 2);
   const col = Math.floor((w - boxWidth) / 2) + 1;
@@ -708,7 +708,7 @@ function cancelInput() {
 }
 
 async function confirmSelect(value) {
-  const continueFn = _state.select.continue;
+  const continueFn = _state.select?.continue;
   _state.select = null;
   setMode("focus");
   if (typeof continueFn !== "function") return;
@@ -738,7 +738,15 @@ function cancelSelect() {
   const continueFn = _state.select?.continue;
   _state.select = null;
   setMode("focus");
-  if (typeof continueFn === "function") continueFn(null).catch(() => {});
+  if (typeof continueFn === "function") {
+    Promise.resolve(continueFn(null))
+      .then((result) => {
+        if (typeof result === "string") showStatus(result, "info");
+      })
+      .catch(() => {});
+  } else {
+    showStatus("Cancelled", "info");
+  }
 }
 
 // ── Status ──

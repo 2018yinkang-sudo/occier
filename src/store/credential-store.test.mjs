@@ -223,11 +223,10 @@ describe("EncryptedFileStore — password-protected vault", () => {
     expect(result.value).toBe("sensitive");
   });
 
-  it("wrong passphrase cannot read data", async () => {
+  it("wrong passphrase throws decryption error", async () => {
     const { createStore } = await import("./credential-store.mjs");
     const store = createStore("encrypted", { passphrase: "wrong-pass", filePath: passFile });
-    const result = await store.get("pass_key");
-    expect(result).toBeNull();
+    await expect(store.get("pass_key")).rejects.toThrow(/decryption failed/i);
   });
 
   it("correct passphrase re-reads successfully", async () => {
