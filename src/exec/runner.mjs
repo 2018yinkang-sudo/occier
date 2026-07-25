@@ -1,8 +1,8 @@
 import { spawn } from "child_process";
 
 const SENSITIVE_PATTERNS = [
-  /(?:api[_-]?key|auth[_-]?token|password|secret)\s*[:=]\s*['"]?[^'"\s]+['"]?/gi,
-  /"password"\s*:\s*"[^"]+"/gi,
+  /(?:api[_-]?key|auth[_-]?token|password|secret|token)\s*[:=]\s*['"]?[^'"\s]+['"]?/gi,
+  /["'](?:api[_-]?key|auth[_-]?token|password|secret|token)["']\s*:\s*"[^"]+"/gi,
   /Authorization:\s*Bearer\s+\S+/gi,
   /Bearer\s+\S{10,}/g,
 ];
@@ -82,7 +82,8 @@ export function hasCommand(cmd) {
       (r) => r.exitCode === 0,
     );
   }
-  return run("command", ["-v", cmd], { timeout: 3000 }).then(
-    (r) => r.exitCode === 0,
-  );
+  // `command -v` is a shell builtin — it must run inside a shell, not via spawn directly.
+  return run("sh", ["-c", 'command -v "$1" >/dev/null 2>&1', "sh", cmd], {
+    timeout: 3000,
+  }).then((r) => r.exitCode === 0);
 }

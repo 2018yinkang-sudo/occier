@@ -113,11 +113,7 @@ export async function providerTest() {
 
     if (r.exitCode === 0) {
       const code = parseInt(r.stdout);
-      if (code === 200 || code === 401 || code === 403) {
-        process.stdout.write(`\r  ${c.green('✓')} ${p.label.padEnd(15)} HTTP ${code} (${ms}ms)\n`);
-      } else {
-        process.stdout.write(`\r  ${c.green('✓')} ${p.label.padEnd(15)} HTTP ${code} (${ms}ms)\n`);
-      }
+      process.stdout.write(`\r  ${c.green('✓')} ${p.label.padEnd(15)} HTTP ${code} (${ms}ms)\n`);
     } else {
       process.stdout.write(`\r  ${c.red('✗')} ${p.label.padEnd(15)} ${c.red('unreachable')}\n`);
     }

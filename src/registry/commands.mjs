@@ -1,5 +1,6 @@
 // Command registry — maps command names to lazy-imported handlers
-// The route() function in cli.mjs uses this to dispatch commands
+// The route() function in cli.mjs uses this to dispatch commands.
+// modulePath values are relative to THIS file; use resolveModule() before import().
 
 const COMMANDS = [
   {
@@ -127,29 +128,12 @@ const COMMANDS = [
     modulePath: "../commands/fix-path.mjs",
     exportName: "fixPath",
   },
-  {
-    name: "mirror",
-    help: "Manage package mirrors",
-    modulePath: null,
-    subCommands: {
-      list: { modulePath: "../commands/v2/network.mjs", exportName: "showMirrors", help: "List available mirrors" },
-      test: { modulePath: "../mirrors/speedtest.mjs", exportName: "testAllMirrors", help: "Test mirror latency" },
-      switch: { modulePath: "../mirrors/speedtest.mjs", exportName: "autoSwitchMirror", args: ["scope"], help: "Auto-switch to fastest mirror" },
-      restore: { modulePath: "../mirrors/speedtest.mjs", exportName: "restoreOfficialMirror", args: ["scope"], help: "Restore official mirrors" },
-    },
-  },
-  {
-    name: "template",
-    help: "Manage CLAUDE.md templates",
-    modulePath: null,
-    subCommands: {
-      list: { modulePath: "../tools/claude/templates.mjs", exportName: "allTemplates", help: "List templates" },
-      preview: { modulePath: "../tools/claude/templates.mjs", exportName: "getTemplate", args: ["id"], help: "Preview a template" },
-      apply: { modulePath: "../tools/claude/template-manager.mjs", exportName: "safeApplyTemplate", args: ["id", "path"], help: "Apply a template" },
-      diff: { modulePath: "../tools/claude/template-manager.mjs", exportName: "diffTemplate", args: ["id", "path"], help: "Diff template against existing" },
-    },
-  },
+  // NOTE: "mirror" and "template" are dispatched by dedicated handlers in cli.mjs
 ];
+
+export function resolveModule(modulePath) {
+  return new URL(modulePath, import.meta.url).href;
+}
 
 export function lookupCommand(cmd) {
   return COMMANDS.find((c) => c.name === cmd) ?? null;

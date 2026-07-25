@@ -1,5 +1,5 @@
 import { c, banner, ok, warn, fail, info, divider } from '../../tui.mjs';
-import { writeConfig, createDefaultConfig, migrateV1 } from '../../schema/config.mjs';
+import { readConfig, writeConfig, createDefaultConfig, migrateV1 } from '../../schema/config.mjs';
 import { detectAll } from '../../env/detect.mjs';
 
 export async function runInit() {
@@ -20,7 +20,9 @@ export async function runInit() {
   }
   ok(`Node.js ${env.node.version}`);
 
-  const cfg = createDefaultConfig();
+  // Preserve existing settings on re-run; create defaults only when missing.
+  const { configExists } = await import('../../schema/config.mjs');
+  const cfg = (await configExists()) ? await readConfig() : createDefaultConfig();
   await writeConfig(cfg);
   ok('Configuration initialized');
 

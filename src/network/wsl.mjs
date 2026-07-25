@@ -16,6 +16,14 @@ export function isWSL() {
   return detectWslVersion() !== null;
 }
 
+// Translate a Windows path (C:\Users\x) to its WSL mount path (/mnt/c/Users/x).
+export function winPathToWsl(winPath) {
+  if (!winPath) return null;
+  const m = winPath.replace(/\\/g, "/").match(/^([A-Za-z]):\/(.+)$/);
+  if (!m) return null;
+  return `/mnt/${m[1].toLowerCase()}/${m[2]}`;
+}
+
 export function detectWslNetworkMode() {
   if (!isWSL()) return null;
   try {
@@ -24,9 +32,9 @@ export function detectWslNetworkMode() {
     if (match) return match[1];
   } catch { /* cannot read wsl.conf */ }
   try {
-    const winHome = process.env.USERPROFILE;
+    const winHome = winPathToWsl(process.env.USERPROFILE);
     if (winHome) {
-      const p = `${winHome.replace(/\\/g, "/")}/.wslconfig`;
+      const p = `${winHome}/.wslconfig`;
       if (existsSync(p)) {
         const content = readFileSync(p, "utf-8");
         const match = content.match(/networkingMode\s*=\s*(\w+)/);
@@ -34,13 +42,14 @@ export function detectWslNetworkMode() {
       }
     }
   } catch { /* cannot read .wslconfig */ }
+  // No .wslconfig — WSL defaults to NAT networking.
   return "nat";
 }
 
 export function getWslConfigPath() {
-  const winHome = process.env.USERPROFILE;
+  const winHome = winPathToWsl(process.env.USERPROFILE);
   if (!winHome) return null;
-  return `${winHome.replace(/\\/g, "/")}/.wslconfig`;
+  return `${winHome}/.wslconfig`;
 }
 
 export function buildWslConfig(networkingMode = "mirrored", autoProxy = true, dnsTunneling = true) {

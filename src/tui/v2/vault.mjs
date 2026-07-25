@@ -3,7 +3,7 @@ import { listCredentials } from "../../services/vault.mjs";
 let _lastUpdate = 0;
 let _cache = null;
 
-export async function renderPanel(term, refreshFn) {
+export async function renderPanel(term) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache) {
     _cache = await listCredentials();
@@ -36,8 +36,6 @@ export async function renderPanel(term, refreshFn) {
   term.gray(`${pad}Run `);
   term.cyan("occier vault list");
   term.gray(" for details\n");
-
-  if (refreshFn) refreshFn();
 }
 
 function drawSectionHeader(term, pad, w, title) {

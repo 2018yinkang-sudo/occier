@@ -4,6 +4,20 @@ import { launchClaude } from '../../launch.mjs';
 import { createStore } from '../../store/credential-store.mjs';
 import { getProviderSafe } from '../../registry/providers.mjs';
 
+export function filterLaunchArgs(args) {
+  const passthrough = [];
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === '--tool' || args[i] === '--provider') && args[i + 1]) {
+      i++;
+    } else if (args[i] === 'claude' || args[i] === 'opencode') {
+      continue;
+    } else {
+      passthrough.push(args[i]);
+    }
+  }
+  return passthrough;
+}
+
 export async function runLaunch(args) {
   let tool = 'claude';
   let providerId = null;
@@ -70,7 +84,7 @@ export async function runLaunch(args) {
     console.log(`  Provider: ${c.cyan(provider.label)}  |  Model: ${c.gray(provider.defaultModel || 'default')}`);
     console.log(``);
 
-    launchClaude(envVars);
+    launchClaude(envVars, filterLaunchArgs(args));
   } else if (tool === 'opencode') {
     console.log(`  ${c.cyan('Starting OpenCode...')}`);
     console.log(``);

@@ -3,7 +3,7 @@ import { getNetworkStatus } from "../../services/network.mjs";
 let _lastUpdate = 0;
 let _cache = null;
 
-export async function renderPanel(term, refreshFn) {
+export async function renderPanel(term) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache) {
     _cache = await getNetworkStatus();
@@ -54,8 +54,6 @@ export async function renderPanel(term, refreshFn) {
     term.gray(m.baseUrl);
     term("\n");
   }
-
-  if (refreshFn) refreshFn();
 }
 
 function drawSectionHeader(term, pad, w, title) {

@@ -86,4 +86,12 @@ describe("TUI panels", () => {
     const output = lines.join("");
     expect(output).toContain("Projects");
   });
+
+  // Regression: panels used to accept a refreshFn and call it on completion,
+  // causing an infinite render loop (render → refresh → render → ...).
+  it("panels take only (term) — no refresh callback exists", () => {
+    for (const panel of [dashboardPanel, networkPanel, vaultPanel, providerPanel, toolsPanel, projectsPanel]) {
+      expect(panel.length).toBe(1);
+    }
+  });
 });

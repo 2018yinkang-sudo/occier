@@ -3,7 +3,7 @@ import { getProviderStatus } from "../../services/provider.mjs";
 let _lastUpdate = 0;
 let _cache = null;
 
-export async function renderPanel(term, refreshFn) {
+export async function renderPanel(term) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache) {
     _cache = await getProviderStatus();
@@ -48,8 +48,6 @@ export async function renderPanel(term, refreshFn) {
   term.gray(`${pad}Run `);
   term.cyan("occier provider connect");
   term.gray(" to configure\n");
-
-  if (refreshFn) refreshFn();
 }
 
 function drawSectionHeader(term, pad, w, title) {

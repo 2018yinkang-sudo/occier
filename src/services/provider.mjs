@@ -1,5 +1,5 @@
 import { allProviders, getProviderSafe } from "../registry/providers.mjs";
-import { createStore } from "../store/credential-store.mjs";
+import { createStore, maskValue } from "../store/credential-store.mjs";
 
 export function listProviders() {
   return allProviders().map((p) => ({
@@ -49,7 +49,7 @@ export async function connectProvider(providerId, apiKey) {
       id: providerId,
       label: provider.label,
       configured: !!apiKey,
-      fingerprint: apiKey ? apiKey.slice(0, 4) + "****" + apiKey.slice(-4) : null,
+      fingerprint: apiKey ? maskValue(apiKey) : null,
     },
   };
 }

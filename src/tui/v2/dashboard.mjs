@@ -6,7 +6,7 @@ import { listCredentials } from "../../services/vault.mjs";
 let _lastUpdate = 0;
 let _cache = { tools: null, providers: null, network: null, vault: null };
 
-export async function renderPanel(term, refreshFn) {
+export async function renderPanel(term) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache.tools) {
     _cache.tools = await getToolStatus();
@@ -60,8 +60,6 @@ export async function renderPanel(term, refreshFn) {
   term(`  ${providers.filter((p) => p.configured).length} providers  `);
   term.brightBlue("●");
   term(`  ${network?.mirrors?.filter((m) => m.enabled).length || 0} mirrors\n`);
-
-  if (refreshFn) refreshFn();
 }
 
 function drawSectionHeader(term, pad, w, title) {

@@ -3,7 +3,7 @@ import { getToolStatus } from "../../services/tools.mjs";
 let _lastUpdate = 0;
 let _cache = null;
 
-export async function renderPanel(term, refreshFn) {
+export async function renderPanel(term) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache) {
     _cache = await getToolStatus();
@@ -36,8 +36,6 @@ export async function renderPanel(term, refreshFn) {
   term(`${pad}  `);
   term.cyan("occier tool update claude");
   term("\n");
-
-  if (refreshFn) refreshFn();
 }
 
 function drawTool(term, pad, name, installed, detail) {

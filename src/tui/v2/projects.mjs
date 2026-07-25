@@ -1,4 +1,4 @@
-export async function renderPanel(term, refreshFn) {
+export async function renderPanel(term) {
   const w = Math.min(64, term.width - 4);
   const pad = "  ";
 
@@ -13,8 +13,6 @@ export async function renderPanel(term, refreshFn) {
   term.gray(`${pad}Use `);
   term.cyan("occier launch");
   term.gray(" to launch Claude Code or OpenCode\n");
-
-  if (refreshFn) refreshFn();
 }
 
 function drawSectionHeader(term, pad, w, title) {

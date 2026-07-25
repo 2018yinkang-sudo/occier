@@ -2,7 +2,6 @@ import { readFile, writeFile, access } from "fs/promises";
 import { constants } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { createStore } from "../../store/credential-store.mjs";
 
 const OC_DIR = join(
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
@@ -43,20 +42,4 @@ export async function removeFromOpenCodeAuth(providerId) {
     delete data[providerId];
     await writeFile(AUTH_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
   } catch { /* file not found, nothing to remove */ }
-}
-
-export async function syncAllToOpenCode() {
-  const store = createStore();
-  const entries = await store.list();
-  let count = 0;
-  for (const e of entries) {
-    if (e.type === "api_key") {
-      const data = await store.get(e.key);
-      if (data?.value) {
-        await syncToOpenCodeAuth(e.key, data.value);
-        count++;
-      }
-    }
-  }
-  return count;
 }

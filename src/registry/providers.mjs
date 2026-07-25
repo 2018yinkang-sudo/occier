@@ -1,4 +1,5 @@
 import { Registry } from "./base.mjs";
+import { getUserProviders } from "./user-providers.mjs";
 
 const BUILTIN_PROVIDERS = [
   {
@@ -136,15 +137,19 @@ for (const p of BUILTIN_PROVIDERS) {
 }
 
 export function getProvider(id) {
+  const user = getUserProviders().find((p) => p.id === id);
+  if (user) return user;
   return providerRegistry.get(id);
 }
 
 export function getProviderSafe(id) {
+  const user = getUserProviders().find((p) => p.id === id);
+  if (user) return user;
   return providerRegistry.tryGet(id);
 }
 
 export function allProviders() {
-  return providerRegistry.list();
+  return [...providerRegistry.list(), ...getUserProviders()];
 }
 
 export function providerChoices() {

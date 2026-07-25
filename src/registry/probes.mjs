@@ -14,11 +14,6 @@ export const ModelStatus = {
   UNKNOWN: "unknown",
 };
 
-export function isCacheValid(testedAt) {
-  if (!testedAt) return false;
-  return Date.now() - new Date(testedAt).getTime() < 5 * 60 * 1000;
-}
-
 export async function probeModel(provider, apiKey, modelId) {
   const start = Date.now();
   const cacheKey = `${provider.id}:${modelId}`;
@@ -39,6 +34,13 @@ export async function probeModel(provider, apiKey, modelId) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
 
+  // Anthropic-style endpoints authenticate via x-api-key;
+  // OpenAI-compatible endpoints expect a Bearer token.
+  const authHeaders =
+    provider.protocol === "openai"
+      ? { Authorization: `Bearer ${apiKey}` }
+      : { "x-api-key": apiKey };
+
   let httpCode = 0;
   let body = "";
   let errorDetail = "";
@@ -48,7 +50,7 @@ export async function probeModel(provider, apiKey, modelId) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
+        ...authHeaders,
       },
       body: JSON.stringify({
         model: modelId || provider.defaultModel,
@@ -74,7 +76,7 @@ export async function probeModel(provider, apiKey, modelId) {
   let detail;
 
   if (errorDetail) {
-    status = errorDetail === "timeout" ? ModelStatus.NETWORK_ERROR : ModelStatus.NETWORK_ERROR;
+    status = ModelStatus.NETWORK_ERROR;
     detail = errorDetail;
   } else if (httpCode === 200) {
     status = ModelStatus.AVAILABLE;

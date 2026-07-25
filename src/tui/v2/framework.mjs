@@ -27,11 +27,7 @@ const COLORS = {
 };
 
 let _currentTab = 0;
-let _panels = {};
-
-export function registerPanel(id, renderFn) {
-  _panels[id] = renderFn;
-}
+let _renderGen = 0;
 
 export function startDashboard(initialTab = 0) {
   _currentTab = initialTab;
@@ -53,6 +49,8 @@ export function startDashboard(initialTab = 0) {
       switchTab(_currentTab);
     }
   });
+
+  term.on("resize", () => renderScreen());
 
   switchTab(_currentTab);
 }
@@ -127,34 +125,34 @@ function drawFooter() {
 
 function drawContent() {
   const tab = TABS[_currentTab];
-  const panel = _panels[tab.id];
-  if (panel) {
-    panel(term);
-  } else {
-    const modMap = {
-      dashboard: "./dashboard.mjs",
-      network: "./network.mjs",
-      vault: "./vault.mjs",
-      providers: "./provider.mjs",
-      tools: "./tools.mjs",
-      projects: "./projects.mjs",
-    };
-    const modPath = modMap[tab.id];
-    if (modPath) {
-      loadPanel(modPath);
-    }
+  const modMap = {
+    dashboard: "./dashboard.mjs",
+    network: "./network.mjs",
+    vault: "./vault.mjs",
+    providers: "./provider.mjs",
+    tools: "./tools.mjs",
+    projects: "./projects.mjs",
+  };
+  const modPath = modMap[tab.id];
+  if (modPath) {
+    loadPanel(modPath);
   }
 }
 
 async function loadPanel(modPath) {
-  const refresh = () => switchTab(_currentTab);
+  // Generation guard: if the user switches tabs while a panel is still
+  // fetching data, the stale panel must not draw onto the new screen.
+  const gen = ++_renderGen;
   try {
     const mod = await import(modPath);
+    if (gen !== _renderGen) return;
     if (mod && typeof mod.renderPanel === "function") {
-      return await mod.renderPanel(term, refresh);
+      await mod.renderPanel(term);
+      return;
     }
     term.red("  Panel module missing renderPanel export\n");
   } catch (err) {
+    if (gen !== _renderGen) return;
     term.red(`  Error loading panel: ${err.message}\n`);
   }
 }

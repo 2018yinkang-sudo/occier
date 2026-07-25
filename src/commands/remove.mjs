@@ -6,6 +6,11 @@ import { ENV_FILE, CONFIG_FILE, CC_CONFIG_DIR } from '../paths.mjs';
 import { shellRcPath } from '../paths.mjs';
 import { c } from '../tui.mjs';
 
+const OC_DIR = join(
+  process.env.XDG_CONFIG_HOME || join(homedir(), '.config'),
+  'occier',
+);
+
 export async function runRemove() {
   console.log('');
   console.log(`  ${c.bold('╔══════════════════════════════════════════╗')}`);
@@ -16,6 +21,7 @@ export async function runRemove() {
   console.log('');
   console.log(`    • Credential file     ${c.gray(ENV_FILE)}`);
   console.log(`    • Config file         ${c.gray(CONFIG_FILE)}`);
+  console.log(`    • v2 data (vault/logs/projects/mirrors/backups) ${c.gray(OC_DIR)}`);
   console.log(`    • Empty config dir    ${c.gray(CC_CONFIG_DIR)}`);
   console.log(`    • PATH entry          ${c.gray('from shell rc')}`);
   console.log(`    • npm global package  ${c.gray('occier')}`);
@@ -52,8 +58,9 @@ export async function runRemove() {
     const content = await readFile(shellRc, 'utf-8');
     const binDir = join(homedir(), '.local', 'bin');
     const escapedBin = binDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Marker was misspelled "ociier" in early releases — accept both spellings.
     const pattern = new RegExp(
-      `^(# Added by occier\\n)?export PATH="${escapedBin}:\\$PATH"\\n?`,
+      `^(# Added by occ?i{1,2}er\\n)?export PATH="${escapedBin}:\\$PATH"\\n?`,
       "m",
     );
     if (pattern.test(content) || content.includes('export PATH="$HOME/.local/bin:$PATH"')) {
@@ -77,7 +84,15 @@ export async function runRemove() {
     }
   } catch { /* dir cannot be read, skip */ }
 
+  // v2 data: vault, config, logs, projects, mirror state, backups
+  try {
+    await rm(OC_DIR, { recursive: true, force: true });
+    console.log(`  ${c.green('✓')} Removed v2 data (${OC_DIR})`);
+  } catch {
+    console.log(`  ${c.yellow('!')} Could not remove ${OC_DIR}`);
+  }
+
   console.log(`\n  ${c.bold('Run the following to uninstall the npm package:')}`);
-  console.log(`  ${c.cyan('npm uninstall -g ociier')}`);
+  console.log(`  ${c.cyan('npm uninstall -g occier')}`);
   console.log(`\n  ${c.green('Done.')} Run ${c.cyan('source ~/.bashrc')} or open a new terminal.\n`);
 }

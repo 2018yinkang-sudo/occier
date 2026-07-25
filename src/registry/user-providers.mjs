@@ -1,9 +1,32 @@
 const USER_PROVIDER_FILE = "user-providers.json";
 
+const REQUIRED_FIELDS = ["id", "label", "protocol", "envVarName"];
+
+function normalizeProvider(raw) {
+  for (const field of REQUIRED_FIELDS) {
+    if (typeof raw[field] !== "string" || !raw[field]) return null;
+  }
+  return {
+    description: "",
+    authType: "api_key",
+    baseURL: "",
+    healthUrl: null,
+    models: Array.isArray(raw.models) ? raw.models : [],
+    defaultModel: raw.defaultModel ?? null,
+    claudeEnv: raw.claudeEnv && typeof raw.claudeEnv === "object" ? raw.claudeEnv : {},
+    ...raw,
+  };
+}
+
 const _providers = [];
 
 export function registerUserProvider(provider) {
-  _providers.push(provider);
+  const normalized = normalizeProvider(provider);
+  if (!normalized) return false;
+  const idx = _providers.findIndex((p) => p.id === normalized.id);
+  if (idx === -1) _providers.push(normalized);
+  else _providers[idx] = normalized;
+  return true;
 }
 
 export function getUserProviders() {
@@ -43,7 +66,12 @@ export async function loadUserProviders() {
 
   _providers.length = 0;
   for (const p of data) {
-    _providers.push(p);
+    const normalized = normalizeProvider(p);
+    if (normalized) {
+      _providers.push(normalized);
+    } else {
+      process.stderr.write(`\n\x1b[33m⚠\x1b[0m  Skipping invalid user provider (needs ${REQUIRED_FIELDS.join("/")}): ${JSON.stringify(p?.id ?? p)}\n\n`);
+    }
   }
 }
 

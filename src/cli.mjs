@@ -1,5 +1,5 @@
 import { c } from './tui.mjs';
-import { lookupCommand } from './registry/commands.mjs';
+import { lookupCommand, resolveModule } from './registry/commands.mjs';
 
 const HELP = `
   ${c.boldCyan('occier')} ${c.gray('— AI Dev Environment Manager (v2)')}
@@ -134,14 +134,14 @@ function dispatchCommand(cmd, args) {
 
   if (subEntry && subEntry.modulePath) {
     return async () => {
-      const m = await import(subEntry.modulePath);
-      await m[subEntry.exportName](args.slice(1));
+      const m = await import(resolveModule(subEntry.modulePath));
+      await m[subEntry.exportName](...args.slice(1));
     };
   }
 
   if (entry.modulePath && entry.exportName) {
     return async () => {
-      const m = await import(entry.modulePath);
+      const m = await import(resolveModule(entry.modulePath));
       await m[entry.exportName](args);
     };
   }
@@ -150,6 +150,12 @@ function dispatchCommand(cmd, args) {
 }
 
 export async function route(args) {
+  // Load user-defined providers once per invocation (best-effort).
+  try {
+    const { loadUserProviders } = await import('./registry/user-providers.mjs');
+    await loadUserProviders();
+  } catch { /* user providers are optional */ }
+
   if (args.length === 0) {
     await displayDashboard();
     return;
@@ -163,8 +169,9 @@ export async function route(args) {
   }
 
   if (cmd === '--version' || cmd === '-v') {
-    const pkg = await import('../package.json', { with: { type: 'json' } });
-    console.log(`occier v${pkg.default.version}`);
+    const { readFile } = await import('fs/promises');
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8'));
+    console.log(`occier v${pkg.version}`);
     return;
   }
 

@@ -1,9 +1,15 @@
 import { configureGitProxy, unsetGitProxy, configureNpmProxy, unsetNpmProxy } from "./proxy.mjs";
 
 export async function configurePipProxy(protocol, host, port) {
+  // pip only supports HTTP(S) proxies.
+  if (protocol !== "http" && protocol !== "https") {
+    process.stderr.write("  \x1b[33m⚠\x1b[0m  pip does not support socks5 proxies — skipped.\n");
+    return false;
+  }
   const url = `http://${host}:${port}`;
   const { runString } = await import("../exec/runner.mjs");
   await runString("pip", ["config", "set", "global.proxy", url], { timeout: 5000 });
+  return true;
 }
 
 export async function unsetPipProxy() {
@@ -34,9 +40,11 @@ export async function unsetAptProxy() {
 }
 
 export async function configureProxychains(protocol, host, port) {
-  const { writeFile } = await import("fs/promises");
+  const { writeFile, copyFile } = await import("fs/promises");
   const proto = protocol === "socks5" ? "socks5" : "http";
   try {
+    // Preserve any existing user configuration before overwriting.
+    await copyFile("/etc/proxychains4.conf", "/etc/proxychains4.conf.occier-bak").catch(() => {});
     await writeFile("/etc/proxychains4.conf", [
       "strict_chain",
       "proxy_dns",

@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { buildProxyEnv, buildShellRcBlock, removeShellRcBlock, detectExistingProxy } from "./proxy.mjs";
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import { buildProxyEnv, buildShellRcBlock, removeShellRcBlock, detectExistingProxy, injectShellRc } from "./proxy.mjs";
 
 describe("buildProxyEnv", () => {
   it("builds HTTP proxy env vars", () => {
@@ -53,5 +56,50 @@ describe("detectExistingProxy", () => {
     expect(proxy).toHaveProperty("http_proxy");
     expect(proxy).toHaveProperty("https_proxy");
     expect(proxy).toHaveProperty("no_proxy");
+  });
+});
+
+describe("injectShellRc", () => {
+  let tmpDir;
+  let rcPath;
+
+  afterEach(() => {
+    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+    tmpDir = null;
+  });
+
+  function setup(content) {
+    tmpDir = mkdtempSync(join(tmpdir(), "occier-rc-"));
+    rcPath = join(tmpDir, ".bashrc");
+    writeFileSync(rcPath, content);
+  }
+
+  it("appends a block to a file without markers and creates a backup", async () => {
+    setup("export EDITOR=vim\n");
+    await injectShellRc(rcPath, buildShellRcBlock("http", "127.0.0.1", 10808));
+    const out = readFileSync(rcPath, "utf-8");
+    expect(out).toContain("export EDITOR=vim");
+    expect(out).toContain(">>> occier proxy >>>");
+    expect(existsSync(`${rcPath}.occier-bak`)).toBe(true);
+  });
+
+  it("replaces an existing marked block", async () => {
+    setup("before\n# >>> occier proxy >>>\nold\n# <<< occier proxy <<<\nafter\n");
+    await injectShellRc(rcPath, buildShellRcBlock("http", "127.0.0.1", 7890));
+    const out = readFileSync(rcPath, "utf-8");
+    expect(out).toContain("before");
+    expect(out).toContain("after");
+    expect(out).toContain("7890");
+    expect(out).not.toContain("old");
+  });
+
+  it("never truncates content after a dangling start marker", async () => {
+    setup("# >>> occier proxy >>>\nexport IMPORTANT_VAR=keepme\nexport ANOTHER=alsokeep\n");
+    await injectShellRc(rcPath, buildShellRcBlock("http", "127.0.0.1", 10808));
+    const out = readFileSync(rcPath, "utf-8");
+    expect(out).toContain("IMPORTANT_VAR=keepme");
+    expect(out).toContain("ANOTHER=alsokeep");
+    expect(out).toContain(">>> occier proxy >>>");
+    expect(out).toContain("<<< occier proxy <<<");
   });
 });

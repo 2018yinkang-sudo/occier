@@ -118,15 +118,25 @@ export async function injectShellRc(rcPath, block) {
   const startIdx = content.indexOf(SHELL_MARKER_START);
   const endIdx = content.indexOf(SHELL_MARKER_END);
 
-  if (startIdx !== -1 && endIdx !== -1) {
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
     const before = content.slice(0, startIdx);
     const after = content.slice(endIdx + SHELL_MARKER_END.length);
     content = before + block + "\n" + after;
   } else if (startIdx !== -1) {
+    // Start marker without a matching end marker (user edited the file).
+    // Remove only the dangling marker line — never truncate the rest.
+    const lineEnd = content.indexOf("\n", startIdx);
     const before = content.slice(0, startIdx);
-    content = before + block + "\n";
+    const after = lineEnd === -1 ? "" : content.slice(lineEnd + 1);
+    content = before + after.trimStart() + "\n" + block + "\n";
   } else {
     content = content.trimEnd() + "\n\n" + block + "\n";
+  }
+
+  // Back up the rc file before modifying it (best-effort).
+  if (content !== "") {
+    const { copyFile } = await import("fs/promises");
+    await copyFile(rcPath, `${rcPath}.occier-bak`).catch(() => {});
   }
 
   await writeFile(rcPath, content);
@@ -168,9 +178,15 @@ export async function unsetGitProxy() {
 }
 
 export async function configureNpmProxy(protocol, host, port) {
+  // npm/pip only support HTTP(S) proxies — a socks5 URL would be silently broken.
+  if (protocol !== "http" && protocol !== "https") {
+    process.stderr.write("  \x1b[33m⚠\x1b[0m  npm does not support socks5 proxies — skipped.\n");
+    return false;
+  }
   const url = `http://${host}:${port}`;
   await runString("npm", ["config", "set", "proxy", url], { timeout: 5000 });
   await runString("npm", ["config", "set", "https-proxy", url], { timeout: 5000 });
+  return true;
 }
 
 export async function unsetNpmProxy() {

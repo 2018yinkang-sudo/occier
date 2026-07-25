@@ -1,7 +1,7 @@
 import { detectCapabilities } from "../env/detect.mjs";
 import { readConfig } from "../schema/config.mjs";
 import { createStore } from "../store/credential-store.mjs";
-import { listProviders } from "./provider.mjs";
+import { getProviderStatus } from "./provider.mjs";
 import { getNetworkStatus } from "./network.mjs";
 
 export async function runDiagnostics() {
@@ -9,7 +9,7 @@ export async function runDiagnostics() {
   const store = createStore();
   const credentials = await store.list();
   const config = await readConfig();
-  const providers = listProviders();
+  const providerStatus = await getProviderStatus();
   const network = await getNetworkStatus();
 
   const checks = [
@@ -38,7 +38,9 @@ export async function runDiagnostics() {
     shell: env.shell,
     checks,
     warnings,
-    configuredProviders: providers.filter((p) => credentials.some((c) => c.key === p.id)),
+    configuredProviders: providerStatus
+      .filter((p) => p.configured)
+      .map((p) => ({ id: p.id, label: p.label, fingerprint: p.fingerprint })),
     credentialCount: credentials.length,
     configVersion: config.version,
     allPassed: checks.filter((c) => !c.pass).length === 0,

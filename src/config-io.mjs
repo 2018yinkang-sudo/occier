@@ -32,10 +32,10 @@ export async function writeConfig(config) {
 }
 
 export async function readProvidersEnv() {
+  const entries = {};
   try {
     await access(ENV_FILE, constants.R_OK);
     const raw = await readFile(ENV_FILE, 'utf-8');
-    const entries = {};
     for (const line of raw.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
@@ -49,17 +49,34 @@ export async function readProvidersEnv() {
       }
       entries[key] = val;
     }
-    return entries;
   } catch {
-    return {};
+    // no legacy env file — fall through to vault merge
   }
+
+  // Bridge: surface v2 vault credentials (lowercase keys) to v1 consumers
+  // (original-case keys). The env file wins on conflicts.
+  try {
+    const { createStore } = await import('./store/credential-store.mjs');
+    const store = createStore();
+    const vault = await store.readAll();
+    for (const [key, entry] of Object.entries(vault)) {
+      const upper = key.toUpperCase();
+      if (!(upper in entries) && entry && typeof entry.value === 'string') {
+        entries[upper] = entry.value;
+      }
+    }
+  } catch {
+    // vault unreadable (corrupt or key mismatch) — v1 file data still valid
+  }
+
+  return entries;
 }
 
 export async function writeProvidersEnv(entries) {
   await ensureConfigDir();
   const lines = [
     '# Claude Code provider credentials',
-    '# Managed by ociier',
+    '# Managed by occier',
     '# Never commit this file.',
     '# Permissions: 600',
     '',

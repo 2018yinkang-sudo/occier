@@ -17,7 +17,8 @@ export async function ensureLogDir() {
 
 export function sanitizeLog(text) {
   return String(text ?? "")
-    .replace(/(api[_-]?key|auth[_-]?token|password|secret)\s*[:=]\s*['"]?[^'"\s]+['"]?/gi, "$1=***")
+    .replace(/(api[_-]?key|auth[_-]?token|password|secret|token)\s*[:=]\s*['"]?[^'"\s]+['"]?/gi, "$1=***")
+    .replace(/(["'](?:api[_-]?key|auth[_-]?token|password|secret|token)["']\s*:\s*["'])[^"']+(["'])/gi, "$1***$2")
     .replace(/Authorization:\s*Bearer\s+\S+/gi, "Authorization: Bearer ***")
     .replace(/Bearer\s+\S{10,}/g, "Bearer ***");
 }

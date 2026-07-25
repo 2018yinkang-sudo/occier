@@ -236,4 +236,4 @@ node bin/occier.mjs network test   # 网络测试可用
 - `src/network/proxy.mjs` / `wsl.mjs` — 已在 v2-fix 中修复
 - `src/tools/claude/`, `opencode/`, `github/` — 逻辑合理，暂不重构
 - `src/schema/config.mjs` — 结构清晰，暂不重构
-- V1 旧命令 (health, config, status, select, fix-path, remove) — 过渡保留
+- V1 旧命令 (health, config, status, fix-path, remove) — 过渡保留（select 已删除：未被接线且引用了不存在的 provider 字段）

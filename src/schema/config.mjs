@@ -20,7 +20,7 @@ const DEFAULT_CONFIG = {
   installedClaude: false,
   installedOpenCode: false,
   networkConfigured: false,
-  vaultType: "file",
+  vaultType: "encrypted",
   telemetry: false,
 };
 
@@ -88,11 +88,23 @@ export async function writeConfig(config) {
   await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
+export async function configExists() {
+  try {
+    await access(CONFIG_FILE, constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createDefaultConfig(overrides = {}) {
   return { ...DEFAULT_CONFIG, ...overrides, createdAt: new Date().toISOString() };
 }
 
 export async function migrateV1() {
+  // Never overwrite an existing v2 config.
+  if (await configExists()) return false;
+
   const { join: pJoin } = await import("path");
   const v1Config = pJoin(
     process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
