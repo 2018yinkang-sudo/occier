@@ -27,23 +27,27 @@ export async function renderPanel(term, state, budget) {
   sectionHeader(term, "Development Tools");
   if (budget.okLine()) return;
 
-  budget.tag("claude", "Claude Code");
-  draw("claude",
-    { text: pad, fg: "white" },
-    { text: "●", fg: claude.installed ? "brightGreen" : "yellow" },
-    { text: "  Claude Code  ".padEnd(18), fg: "brightWhite" },
-    { text: claude.installed ? `installed  ${claude.version || ""}` : "not installed", fg: claude.installed ? "green" : "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("Claude Code")) {
+    budget.tag("claude", "Claude Code");
+    draw("claude",
+      { text: pad, fg: "white" },
+      { text: "●", fg: claude.installed ? "brightGreen" : "yellow" },
+      { text: "  Claude Code  ".padEnd(18), fg: "brightWhite" },
+      { text: claude.installed ? `installed  ${claude.version || ""}` : "not installed", fg: claude.installed ? "green" : "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
-  budget.tag("opencode", "OpenCode");
-  draw("opencode",
-    { text: pad, fg: "white" },
-    { text: "●", fg: opencode.installed ? "brightGreen" : "yellow" },
-    { text: "  OpenCode     ".padEnd(18), fg: "brightWhite" },
-    { text: opencode.installed ? `installed  ${opencode.version || ""}` : "not installed", fg: opencode.installed ? "green" : "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("OpenCode")) {
+    budget.tag("opencode", "OpenCode");
+    draw("opencode",
+      { text: pad, fg: "white" },
+      { text: "●", fg: opencode.installed ? "brightGreen" : "yellow" },
+      { text: "  OpenCode     ".padEnd(18), fg: "brightWhite" },
+      { text: opencode.installed ? `installed  ${opencode.version || ""}` : "not installed", fg: opencode.installed ? "green" : "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
   line(term, { text: "", fg: "white" });
   if (budget.okLine()) return;
@@ -51,14 +55,16 @@ export async function renderPanel(term, state, budget) {
   sectionHeader(term, "GitHub");
   if (budget.okLine()) return;
 
-  budget.tag("gh", "GitHub CLI");
-  draw("gh",
-    { text: pad, fg: "white" },
-    { text: "●", fg: gh.installed ? (gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
-    { text: "  GitHub CLI   ".padEnd(18), fg: "brightWhite" },
-    { text: gh.installed ? (gh.loggedIn ? "authenticated" : "not logged in") : "not installed", fg: gh.installed ? (gh.loggedIn ? "green" : "gray") : "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("GitHub CLI")) {
+    budget.tag("gh", "GitHub CLI");
+    draw("gh",
+      { text: pad, fg: "white" },
+      { text: "●", fg: gh.installed ? (gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
+      { text: "  GitHub CLI   ".padEnd(18), fg: "brightWhite" },
+      { text: gh.installed ? (gh.loggedIn ? "authenticated" : "not logged in") : "not installed", fg: gh.installed ? (gh.loggedIn ? "green" : "gray") : "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
   line(term, { text: "", fg: "white" });
   if (budget.okLine()) return;

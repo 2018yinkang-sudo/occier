@@ -33,42 +33,50 @@ export async function renderPanel(term, state, budget) {
   sectionHeader(term, "System Status");
   if (budget.okLine()) return;
 
-  budget.tag("tool-claude", "Claude Code");
-  draw("tool-claude",
-    { text: pad, fg: "white" },
-    { text: "●", fg: tools.claude.installed ? "brightGreen" : "yellow" },
-    { text: "  Claude Code  ", fg: "white" },
-    { text: tools.claude.installed ? `installed  ${tools.claude.version || ""}` : "not installed", fg: tools.claude.installed ? "green" : "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("Claude Code")) {
+    budget.tag("tool-claude", "Claude Code");
+    draw("tool-claude",
+      { text: pad, fg: "white" },
+      { text: "●", fg: tools.claude.installed ? "brightGreen" : "yellow" },
+      { text: "  Claude Code  ", fg: "white" },
+      { text: tools.claude.installed ? `installed  ${tools.claude.version || ""}` : "not installed", fg: tools.claude.installed ? "green" : "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
-  budget.tag("tool-opencode", "OpenCode");
-  draw("tool-opencode",
-    { text: pad, fg: "white" },
-    { text: "●", fg: tools.opencode.installed ? "brightGreen" : "yellow" },
-    { text: "  OpenCode     ", fg: "white" },
-    { text: tools.opencode.installed ? `installed  ${tools.opencode.version || ""}` : "not installed", fg: tools.opencode.installed ? "green" : "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("OpenCode")) {
+    budget.tag("tool-opencode", "OpenCode");
+    draw("tool-opencode",
+      { text: pad, fg: "white" },
+      { text: "●", fg: tools.opencode.installed ? "brightGreen" : "yellow" },
+      { text: "  OpenCode     ", fg: "white" },
+      { text: tools.opencode.installed ? `installed  ${tools.opencode.version || ""}` : "not installed", fg: tools.opencode.installed ? "green" : "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
-  budget.tag("tool-gh", "GitHub CLI");
-  draw("tool-gh",
-    { text: pad, fg: "white" },
-    { text: "●", fg: tools.gh.installed ? (tools.gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
-    { text: "  GitHub CLI   ", fg: "white" },
-    { text: `installed  ${tools.gh.loggedIn ? "authenticated" : "not logged in"}`, fg: tools.gh.loggedIn ? "green" : "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("GitHub CLI")) {
+    budget.tag("tool-gh", "GitHub CLI");
+    draw("tool-gh",
+      { text: pad, fg: "white" },
+      { text: "●", fg: tools.gh.installed ? (tools.gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
+      { text: "  GitHub CLI   ", fg: "white" },
+      { text: `installed  ${tools.gh.loggedIn ? "authenticated" : "not logged in"}`, fg: tools.gh.loggedIn ? "green" : "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
   const hasProxy = !!(network && network.proxy && network.proxy.http_proxy);
-  budget.tag("network", "Network");
-  draw("network",
-    { text: pad, fg: "white" },
-    { text: "●", fg: hasProxy ? "brightGreen" : "yellow" },
-    { text: "  Network      ", fg: "white" },
-    { text: hasProxy ? "proxy set" : "direct", fg: hasProxy ? "green" : "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("Network")) {
+    budget.tag("network", "Network");
+    draw("network",
+      { text: pad, fg: "white" },
+      { text: "●", fg: hasProxy ? "brightGreen" : "yellow" },
+      { text: "  Network      ", fg: "white" },
+      { text: hasProxy ? "proxy set" : "direct", fg: hasProxy ? "green" : "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
   line(term, { text: "", fg: "white" });
   if (budget.okLine()) return;
@@ -90,6 +98,7 @@ export async function renderPanel(term, state, budget) {
     if (budget.okLine()) return;
   } else {
     for (const p of configured) {
+      if (!budget.shouldShow(p.label)) continue;
       budget.tag(`provider-${p.id}`, p.label);
       draw(`provider-${p.id}`,
         { text: pad, fg: "white" },

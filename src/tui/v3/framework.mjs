@@ -38,11 +38,12 @@ const MOD_MAP = {
 };
 
 let _state = createState();
-let _renderGen = 0;
 let _cacheGen = 0;
 let _switchTimer = null;
 let _statusTimer = null;
 let _loadedPanels = {};
+let _rendering = false;
+let _renderDirty = false;
 
 const MODES = {
   focus: focusMode,
@@ -101,6 +102,20 @@ export function startDashboard(initialTab = 0) {
   term.on("resize", () => renderScreen());
 
   switchTab(_state.currentTab);
+  preloadPanelSummaries();
+}
+
+// Background-preload all panel modules so switching tabs is instant (no
+// dynamic import latency on first visit). Non-blocking: fires after the
+// initial render completes.
+async function preloadPanelSummaries() {
+  for (const modPath of Object.values(MOD_MAP)) {
+    try {
+      if (!_loadedPanels[modPath]) {
+        _loadedPanels[modPath] = await import(modPath);
+      }
+    } catch { /* ignore — will load on demand */ }
+  }
 }
 
 export function exitDashboard() {
@@ -176,22 +191,44 @@ function setMode(nextMode) {
 }
 
 // ── Rendering ──
+// Serialized render: only one render runs at a time. Requests during an
+// in-flight render are coalesced into a single follow-up render. This
+// eliminates the duplicate-content / ghost-frame bug caused by interleaved
+// async renders (term.clear() from render N+1 between panel draws of N).
 
-async function renderScreen() {
-  const gen = ++_renderGen;
+function renderScreen() {
+  if (_rendering) {
+    _renderDirty = true;
+    return Promise.resolve();
+  }
+  return _runRender();
+}
 
+async function _runRender() {
+  _rendering = true;
+  do {
+    _renderDirty = false;
+    await _doRender();
+  } while (_renderDirty);
+  _rendering = false;
+}
+
+async function _doRender() {
   term.clear();
   drawHeader();
-  drawTabBar();
 
   term.moveTo(1, CONTENT_START);
 
   const tabId = currentTabId();
   const scrollOffset = getScrollOffset(_state, tabId);
 
-  await loadPanel(tabId, scrollOffset, gen);
+  const cursorWasUnset = _state.cursor[tabId] === undefined;
+  await loadPanel(tabId, scrollOffset);
+  const cursorJustInitialized = cursorWasUnset && _state.cursor[tabId] !== undefined;
 
-  if (gen !== _renderGen) return;
+  // Draw tab bar AFTER loadPanel so the current tab's badge (getTabSummary)
+  // reflects freshly-loaded data.
+  drawTabBar();
 
   if (_state.mode === "input" && _state.input?.spec) {
     drawInputModal();
@@ -209,6 +246,12 @@ async function renderScreen() {
     }
     drawFooter();
     try { term.eraseDisplayAfter(); } catch { /* non-TTY: skip */ }
+  }
+
+  // If the cursor was just initialized for this tab, the first paint didn't
+  // show the ▸ marker. Trigger one coalesced follow-up render to fix it.
+  if (cursorJustInitialized) {
+    _renderDirty = true;
   }
 }
 
@@ -508,7 +551,7 @@ function drawSelectModal() {
 
 // ── Panel loading ──
 
-async function loadPanel(tabId, scrollOffset, gen) {
+async function loadPanel(tabId, scrollOffset) {
   const modPath = MOD_MAP[tabId];
   if (!modPath) return;
 
@@ -516,7 +559,6 @@ async function loadPanel(tabId, scrollOffset, gen) {
     try {
       _loadedPanels[modPath] = await import(modPath);
     } catch (err) {
-      if (gen !== _renderGen) return;
       term.moveTo(1, CONTENT_START);
       term.red(`Failed to load panel "${tabId}": ${err.message}\n`);
       return;
@@ -528,16 +570,14 @@ async function loadPanel(tabId, scrollOffset, gen) {
 
   const cursorItemId = _state.cursor[tabId] ?? null;
   const budget = makeLineBudget(term, scrollOffset);
+  budget.setSearchQuery(_state.search?.query || null);
 
   try {
-    await mod.renderPanel(term, { scrollOffset, cursorItemId, mode: _state.mode, forceRefresh: _state.forceRefresh, cacheGen: _cacheGen }, budget);
+    await mod.renderPanel(term, { scrollOffset, cursorItemId, mode: _state.mode, forceRefresh: _state.forceRefresh, cacheGen: _cacheGen, searchQuery: _state.search?.query || null }, budget);
   } catch (err) {
-    if (gen !== _renderGen) return;
     term.moveTo(1, CONTENT_START);
     term.red(`Panel "${tabId}" render error: ${err.message}\n`);
   }
-
-  if (gen !== _renderGen) return;
 
   // Initialize cursor to the first selectable item if not yet set for this tab.
   if (_state.cursor[tabId] === undefined && budget.items.length > 0) {

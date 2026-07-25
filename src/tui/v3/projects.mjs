@@ -14,35 +14,43 @@ export async function renderPanel(term, state, budget) {
   sectionHeader(term, "Projects");
   if (budget.okLine()) return;
 
-  budget.tag("create", "Create project");
-  draw("create",
-    { text: `${pad}`, fg: "white" },
-    { text: "occier project create", fg: "cyan" },
-    { text: " — create a new project", fg: "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("Create project")) {
+    budget.tag("create", "Create project");
+    draw("create",
+      { text: `${pad}`, fg: "white" },
+      { text: "occier project create", fg: "cyan" },
+      { text: " — create a new project", fg: "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
-  budget.tag("open", "Open project");
-  draw("open",
-    { text: `${pad}`, fg: "white" },
-    { text: "occier project open", fg: "cyan" },
-    { text: " — open an existing project", fg: "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("Open project")) {
+    budget.tag("open", "Open project");
+    draw("open",
+      { text: `${pad}`, fg: "white" },
+      { text: "occier project open", fg: "cyan" },
+      { text: " — open an existing project", fg: "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
-  budget.tag("launch", "Launch IDE");
-  draw("launch",
-    { text: `${pad}`, fg: "white" },
-    { text: "occier launch", fg: "cyan" },
-    { text: " — launch Claude Code or OpenCode", fg: "gray" },
-  );
-  if (budget.okLine()) return;
+  if (budget.shouldShow("Launch IDE")) {
+    budget.tag("launch", "Launch IDE");
+    draw("launch",
+      { text: `${pad}`, fg: "white" },
+      { text: "occier launch", fg: "cyan" },
+      { text: " — launch Claude Code or OpenCode", fg: "gray" },
+    );
+    if (budget.okLine()) return;
+  }
 
   line(term, { text: "", fg: "white" });
   if (budget.okLine()) return;
 
   line(term,
-    { text: `${pad}Press Enter on an item to run the command`, fg: "gray" },
+    { text: `${pad}Press `, fg: "gray" },
+    { text: "Enter", fg: "cyan" },
+      { text: " on an item to see the command to run.", fg: "gray" },
   );
   term.styleReset();
 }

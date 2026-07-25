@@ -62,7 +62,10 @@ export function selectedLine(term, ...parts) {
       const text = (p.text ?? "").length > remaining
         ? (p.text ?? "").slice(0, remaining)
         : (p.text ?? "");
-      term.black(text);
+      // Preserve the part's foreground color on the inverted background.
+      if (p.fg) term[p.fg](); else term.black();
+      if (p.bold) term.bold();
+      term(text);
       remaining -= text.length;
     }
   }
@@ -77,6 +80,7 @@ export function makeLineBudget(term, scrollOffset = 0) {
   let logical = 0;
   let drawn = 0;
   const items = [];
+  let searchQuery = null;
 
   return {
     okLine() {
@@ -87,6 +91,13 @@ export function makeLineBudget(term, scrollOffset = 0) {
     },
     tag(id, label) {
       items.push({ id, label, logicalLine: logical + 1, drawnLine: drawn + 1 });
+    },
+    setSearchQuery(q) {
+      searchQuery = q ? q.toLowerCase() : null;
+    },
+    shouldShow(label) {
+      if (!searchQuery) return true;
+      return (label || "").toLowerCase().includes(searchQuery);
     },
     get items() { return items; },
     get totalLines() { return logical; },

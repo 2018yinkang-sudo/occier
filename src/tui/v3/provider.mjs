@@ -35,11 +35,12 @@ export async function renderPanel(term, state, budget) {
     line(term, { text: `${pad}Configured:`, fg: "brightGreen" });
     if (budget.okLine()) return;
     for (const p of configured) {
+      if (!budget.shouldShow(p.label)) continue;
       budget.tag(p.id, p.label);
       draw(p.id,
         { text: pad, fg: "white" },
         { text: "● ", fg: "brightGreen" },
-        { text: p.label.padEnd(14), fg: "brightWhite" },
+        { text: p.label.length > 18 ? (p.label.slice(0, 17) + "…").padEnd(20) : p.label.padEnd(20), fg: "brightWhite" },
         { text: p.protocol.padEnd(10), fg: "gray" },
         { text: p.fingerprint || "", fg: "gray" },
       );
@@ -53,11 +54,12 @@ export async function renderPanel(term, state, budget) {
     line(term, { text: `${pad}Available:`, fg: "brightWhite" });
     if (budget.okLine()) return;
     for (const p of available) {
+      if (!budget.shouldShow(p.label)) continue;
       budget.tag(p.id, p.label);
       draw(p.id,
         { text: pad, fg: "white" },
         { text: "○ ", fg: "gray" },
-        { text: p.label.padEnd(14), fg: "white" },
+        { text: p.label.length > 18 ? (p.label.slice(0, 17) + "…").padEnd(20) : p.label.padEnd(20), fg: "white" },
         { text: p.protocol, fg: "gray" },
       );
       if (budget.okLine()) break;

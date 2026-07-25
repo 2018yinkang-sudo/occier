@@ -52,9 +52,14 @@ export async function renderPanel(term, state, budget) {
     if (budget.okLine()) return;
   } else {
     for (const [k, v] of Object.entries(proxy)) {
+      const w = Number.isFinite(term.width) ? term.width : 80;
+      const maxValLen = Math.max(1, w - pad.length - 15);
+      const displayVal = v
+        ? (v.length > maxValLen ? v.slice(0, maxValLen - 1) + "…" : v)
+        : "not set";
       line(term,
         { text: `${pad}${k.padEnd(15)}`, fg: "brightWhite" },
-        { text: v || "not set", fg: v ? "brightGreen" : "gray" },
+        { text: displayVal, fg: v ? "brightGreen" : "gray" },
       );
       if (budget.okLine()) break;
     }
@@ -67,6 +72,7 @@ export async function renderPanel(term, state, budget) {
   if (budget.okLine()) return;
 
   for (const m of mirrors || []) {
+    if (!budget.shouldShow(m.id)) continue;
     const url = m.baseUrl.length > 50 ? `${m.baseUrl.slice(0, 47)}...` : m.baseUrl;
     budget.tag(m.id, m.id);
     draw(m.id,

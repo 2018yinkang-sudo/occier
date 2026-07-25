@@ -34,6 +34,7 @@ export async function renderPanel(term, state, budget) {
     if (budget.okLine()) return;
   } else {
     for (const cred of _cache.credentials) {
+      if (!budget.shouldShow(cred.key)) continue;
       budget.tag(cred.key, cred.key);
       draw(cred.key,
         { text: pad, fg: "white" },
@@ -43,6 +44,16 @@ export async function renderPanel(term, state, budget) {
         { text: cred.fingerprint, fg: "gray" },
       );
       if (budget.okLine()) break;
+    }
+
+    // Always show "Add credential" at the bottom so users can add new keys
+    // even when the vault is non-empty.
+    if (budget.shouldShow("Add credential")) {
+      budget.tag("add-credential", "Add credential");
+      draw("add-credential",
+        { text: `${pad}+ Add credential`, fg: "yellow" },
+      );
+      if (budget.okLine()) return;
     }
   }
 
@@ -56,7 +67,7 @@ export async function renderPanel(term, state, budget) {
   line(term,
     { text: `${pad}Press `, fg: "gray" },
     { text: "Enter", fg: "cyan" },
-      { text: " on a key to remove it, or 'Add credential' to add.", fg: "gray" },
+      { text: " on a key to remove, or '+ Add credential' to add.", fg: "gray" },
   );
   term.styleReset();
 }

@@ -3,6 +3,11 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { mkdtempSync, rmSync } from "fs";
 
+// Set XDG_CONFIG_HOME BEFORE importing vault.mjs / credential-store.mjs
+// so createStore() writes to a temp vault, not the user's real vault.
+const _xdg = mkdtempSync(join(tmpdir(), "occier-vault-xdg-"));
+process.env.XDG_CONFIG_HOME = _xdg;
+
 let tmpDir;
 let credFile;
 
@@ -13,6 +18,7 @@ beforeAll(() => {
 
 afterAll(() => {
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  try { rmSync(_xdg, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
 describe("services/vault — listCredentials", () => {
