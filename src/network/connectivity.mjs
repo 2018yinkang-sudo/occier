@@ -1,11 +1,11 @@
 import { runString } from "../exec/runner.mjs";
 
 const CHECK_TARGETS = [
-  { name: "GitHub", url: "https://github.com", tier: 4 },
-  { name: "npm Registry", url: "https://registry.npmjs.org", tier: 4 },
-  { name: "Google", url: "https://www.google.com", tier: 4 },
-  { name: "Baike (CN)", url: "https://www.baidu.com", tier: 4 },
-  { name: "npmjs.com", url: "https://www.npmjs.com", tier: 4 },
+  { name: "GitHub", url: "https://github.com" },
+  { name: "npm Registry", url: "https://registry.npmjs.org" },
+  { name: "Google", url: "https://www.google.com" },
+  { name: "Baike (CN)", url: "https://www.baidu.com" },
+  { name: "npmjs.com", url: "https://www.npmjs.com" },
 ];
 
 export async function checkDns(hostname) {
@@ -41,29 +41,20 @@ export async function checkConnectivity(url, timeout = 5000) {
 }
 
 export async function checkAll() {
-  const results = [];
-  for (const target of CHECK_TARGETS) {
-    const hostname = target.url.replace(/^https?:\/\//, "").split("/")[0];
-    const dnsResult = await checkDns(hostname);
-    const httpResult = await checkConnectivity(target.url);
-    results.push({
-      ...target,
-      dns: dnsResult,
-      http: httpResult,
-      status: dnsResult.pass && httpResult.pass ? "ok" : "fail",
-    });
-  }
+  const results = await Promise.all(
+    CHECK_TARGETS.map(async (target) => {
+      const hostname = target.url.replace(/^https?:\/\//, "").split("/")[0];
+      const [dnsResult, httpResult] = await Promise.all([
+        checkDns(hostname),
+        checkConnectivity(target.url),
+      ]);
+      return {
+        ...target,
+        dns: dnsResult,
+        http: httpResult,
+        status: dnsResult.pass && httpResult.pass ? "ok" : "fail",
+      };
+    }),
+  );
   return results;
-}
-
-export function getTierLabel(tier) {
-  const labels = {
-    1: "Port",
-    2: "DNS",
-    3: "TCP/TLS",
-    4: "HTTP",
-    5: "Auth",
-    6: "Model",
-  };
-  return labels[tier] || `Tier ${tier}`;
 }

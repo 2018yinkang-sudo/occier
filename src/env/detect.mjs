@@ -1,9 +1,12 @@
 import { platform } from "os";
-import { readFileSync } from "fs";
 import { run, hasCommand } from "../exec/runner.mjs";
-import { detectWslNetworkMode } from "../network/wsl.mjs";
+import { isWSL, detectWslNetworkMode, detectWslVersion as wslVersion } from "../network/wsl.mjs";
+import { detectExistingProxy } from "../network/proxy.mjs";
 
 let _detected = null;
+
+export { isWSL, detectWslNetworkMode };
+export { detectWslVersion as detectWSL } from "../network/wsl.mjs";
 
 export function getOS() {
   const p = platform();
@@ -14,30 +17,6 @@ export function getOS() {
     return "linux";
   }
   return p;
-}
-
-export function isWSL() {
-  try {
-    const osRelease = readFileSync("/proc/version", "utf-8").toLowerCase();
-    return osRelease.includes("microsoft") || osRelease.includes("wsl");
-  } catch {
-    return false;
-  }
-}
-
-export function wslVersion() {
-  if (!isWSL()) return null;
-  try {
-    const content = readFileSync("/proc/version", "utf-8");
-    if (content.includes("WSL2") || content.toLowerCase().includes("wsl2")) return 2;
-    return 1;
-  } catch {
-    return null;
-  }
-}
-
-export function wslNetworkMode() {
-  return detectWslNetworkMode();
 }
 
 export function getShell() {
@@ -76,7 +55,7 @@ export async function detectCapabilities() {
     os: getOS(),
     isWSL: isWSL(),
     wslVersion: wslVersion(),
-    wslNetworkMode: wslNetworkMode(),
+    wslNetworkMode: detectWslNetworkMode(),
     shell: getShell(),
     node: { installed: node, version: nodeVer },
     npm: { installed: npm, version: npmVer },
@@ -104,12 +83,7 @@ async function checkGhAuth() {
 }
 
 export function detectProxyEnv() {
-  return {
-    http_proxy: process.env.http_proxy || process.env.HTTP_PROXY || null,
-    https_proxy: process.env.https_proxy || process.env.HTTPS_PROXY || null,
-    all_proxy: process.env.all_proxy || process.env.ALL_PROXY || null,
-    no_proxy: process.env.no_proxy || process.env.NO_PROXY || null,
-  };
+  return detectExistingProxy();
 }
 
 export async function detectAll() {

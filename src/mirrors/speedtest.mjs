@@ -20,19 +20,9 @@ export async function testMirrorLatency(mirrorId) {
 }
 
 export async function testAllMirrors() {
-  const results = [];
-  for (const m of await allMirrors()) {
-    results.push(await testMirrorLatency(m.id));
-  }
-  return results;
-}
-
-export async function testMirrorsByScope(scope) {
-  const mirrors = await mirrorsByScope(scope);
-  const results = [];
-  for (const m of mirrors) {
-    results.push(await testMirrorLatency(m.id));
-  }
+  const results = await Promise.all(
+    (await allMirrors()).map((m) => testMirrorLatency(m.id)),
+  );
   return results;
 }
 

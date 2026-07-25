@@ -1,14 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getTierLabel, checkConnectivity } from "./connectivity.mjs";
-
-describe("getTierLabel", () => {
-  it("returns correct label for each tier", () => {
-    expect(getTierLabel(1)).toBe("Port");
-    expect(getTierLabel(4)).toBe("HTTP");
-    expect(getTierLabel(6)).toBe("Model");
-    expect(getTierLabel(99)).toBe("Tier 99");
-  });
-});
+import { checkConnectivity } from "./connectivity.mjs";
 
 describe("checkConnectivity", () => {
   it("returns result with pass/code/ms/error", async () => {
