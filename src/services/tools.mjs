@@ -1,10 +1,11 @@
 import { runString } from "../exec/runner.mjs";
+import { createStore } from "../store/credential-store.mjs";
 
 export async function getToolStatus() {
   const [claude, opencode, gh] = await Promise.all([
     checkTool("claude", "--version"),
     checkTool("opencode", "--version"),
-    checkGhAuth(),
+    checkGhFromVault(),
   ]);
 
   return { claude, opencode, gh };
@@ -16,10 +17,13 @@ async function checkTool(cmd, arg) {
   return { installed: true, version: r.stdout || "installed" };
 }
 
-async function checkGhAuth() {
-  const r = await runString("gh", ["auth", "status"], { timeout: 5000 }).catch(() => null);
-  if (!r) return { installed: false, loggedIn: false };
-  return { installed: true, loggedIn: r.exitCode === 0 };
+async function checkGhFromVault() {
+  const r = await runString("gh", ["--version"], { timeout: 5000 }).catch(() => null);
+  if (!r || r.exitCode !== 0) return { installed: false, loggedIn: false };
+  // Check vault for a stored github_token instead of spawning `gh auth status`.
+  const store = createStore();
+  const data = await store.get("github_token");
+  return { installed: true, loggedIn: !!(data && data.value) };
 }
 
 export async function installTool(tool) {

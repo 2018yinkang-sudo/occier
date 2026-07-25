@@ -76,7 +76,7 @@ export async function renderPanel(term, state, budget) {
       { text: pad, fg: "white" },
       { text: "●", fg: gh.installed ? (gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
       { text: "  GitHub CLI   ".padEnd(18), fg: "brightWhite" },
-      { text: gh.installed ? (gh.loggedIn ? "authenticated" : "not logged in") : "not installed", fg: gh.installed ? (gh.loggedIn ? "green" : "gray") : "gray" },
+      { text: gh.installed ? (gh.loggedIn ? "authenticated" : "configure token") : "not installed", fg: gh.installed ? (gh.loggedIn ? "green" : "gray") : "gray" },
     )) return;
   }
 
@@ -123,7 +123,21 @@ export async function handleAction(_term, itemId) {
       return "OpenCode installed";
     }
     if (itemId === "gh") {
-      return "GitHub CLI: use 'occier tool install gh' in shell";
+      return {
+        input: {
+          title: "Configure GitHub Token",
+          prompt: "GitHub token (ghp_...): ",
+          password: true,
+        },
+        async continue(token) {
+          if (!token || token.length < 4) return "Cancelled";
+          const { createStore } = await import("../../store/credential-store.mjs");
+          const store = createStore();
+          await store.set("github_token", { type: "github_token", value: token, updatedAt: new Date().toISOString() });
+          _lastUpdate = 0;
+          return "GitHub token saved";
+        },
+      };
     }
     return null;
   } catch (err) {

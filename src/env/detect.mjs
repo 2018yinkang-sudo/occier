@@ -97,8 +97,10 @@ async function getVersion(cmd) {
 }
 
 async function checkGhAuth() {
-  const r = await run("gh", ["auth", "status"], { timeout: 5000 });
-  return r.exitCode === 0;
+  const { createStore } = await import("../store/credential-store.mjs");
+  const store = createStore();
+  const data = await store.get("github_token");
+  return !!(data && data.value);
 }
 
 export function detectProxyEnv() {

@@ -86,7 +86,7 @@ export async function renderPanel(term, state, budget) {
       { text: pad, fg: "white" },
       { text: "●", fg: tools.gh.installed ? (tools.gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
       { text: "  GitHub CLI   ", fg: "white" },
-      { text: `installed  ${tools.gh.loggedIn ? "authenticated" : "not logged in"}`, fg: tools.gh.loggedIn ? "green" : "gray" },
+      { text: `installed  ${tools.gh.loggedIn ? "authenticated" : "configure token"}`, fg: tools.gh.loggedIn ? "green" : "gray" },
     )) return;
   }
 
@@ -165,7 +165,21 @@ export async function handleAction(_term, itemId) {
   }
 
   if (itemId === "tool-gh") {
-    return "GitHub CLI: use 'occier tool install gh' in shell";
+    return {
+      input: {
+        title: "Configure GitHub Token",
+        prompt: "GitHub token (ghp_...): ",
+        password: true,
+      },
+      async continue(token) {
+        if (!token || token.length < 4) return "Cancelled";
+        const { createStore } = await import("../../store/credential-store.mjs");
+        const store = createStore();
+        await store.set("github_token", { type: "github_token", value: token, updatedAt: new Date().toISOString() });
+        _lastUpdate = 0;
+        return "GitHub token saved";
+      },
+    };
   }
 
   if (itemId === "network") {
