@@ -1,0 +1,95 @@
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+const pkg = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "package.json"), "utf-8"),
+);
+
+// Minimal mock of terminal-kit's terminal object.
+const calls = [];
+const term = {
+  width: 80,
+  height: 24,
+  on() {},
+  moveTo() {},
+  styleReset() {},
+  fullscreen() {},
+  hideCursor() {},
+  grabInput() {},
+  clear() {},
+  eraseDisplay() {},
+  eraseDisplayAfter() {},
+};
+for (const prop of [
+  "white", "black", "red", "cyan", "gray",
+  "bold", "brightGreen", "yellow", "green",
+  "brightCyan", "brightWhite",
+  "bgGray", "bgBlack", "bgBrightCyan", "bgBrightWhite",
+]) {
+  term[prop] = (...args) => {
+    calls.push({ prop, args });
+    args.forEach((a) => { if (typeof a === "string") term._text = (term._text || "") + a; });
+    return term;
+  };
+}
+
+vi.mock("terminal-kit", () => ({
+  default: { terminal: term },
+}));
+
+let mod;
+
+beforeAll(async () => {
+  mod = await import("./framework.mjs");
+});
+
+describe("TUI framework rendering", () => {
+  it("switchTab calls renderScreen which does NOT use term.clear", () => {
+    const clearFn = vi.fn();
+    const origClear = term.clear;
+    term.clear = clearFn;
+    calls.length = 0;
+    mod.switchTab(0);
+    expect(clearFn).not.toHaveBeenCalled();
+    term.clear = origClear;
+  });
+
+  it("header displays the dynamic version from package.json", () => {
+    calls.length = 0;
+    mod.switchTab(0);
+    const verCalls = calls.filter((c) => c.prop === "white" && c.args[0]?.startsWith?.("v"));
+    expect(verCalls.length).toBeGreaterThanOrEqual(1);
+    const verText = verCalls[0].args[0];
+    expect(verText).toContain(pkg.version);
+  });
+
+  it("unselected tab labels use brightWhite (not gray)", () => {
+    calls.length = 0;
+    mod.switchTab(0);
+    const grayCalls = calls.filter((c) => c.prop === "gray");
+    for (const gc of grayCalls) {
+      const text = gc.args[0]?.trim();
+      if (!text) continue;
+      const isTabLabel = ["Dashboard", "Network", "Vault", "Providers", "Tools", "Projects"].some(
+        (l) => text === l || text?.startsWith?.(l),
+      );
+      expect(isTabLabel).toBe(false);
+    }
+  });
+
+  it("footer uses bright colors on bgGray", () => {
+    calls.length = 0;
+    mod.switchTab(0);
+    const brightCalls = calls.filter((c) => c.prop === "brightWhite" || c.prop === "brightCyan");
+    expect(brightCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders all tab panels without crash (import check)", async () => {
+    for (const id of ["dashboard", "network", "vault", "provider", "tools", "projects"]) {
+      const pMod = await import(`./${id}.mjs`);
+      expect(typeof pMod.renderPanel).toBe("function");
+    }
+  });
+});

@@ -2,6 +2,7 @@ import { getToolStatus } from "../../services/tools.mjs";
 import { getProviderStatus } from "../../services/provider.mjs";
 import { getNetworkStatus } from "../../services/network.mjs";
 import { listCredentials } from "../../services/vault.mjs";
+import { line, sectionHeader, contentMaxLines } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
 let _cache = { tools: null, providers: null, network: null, vault: null };
@@ -17,72 +18,87 @@ export async function renderPanel(term) {
   }
 
   const { tools, providers, network, vault } = _cache;
-  const w = Math.min(64, term.width - 4);
   const pad = "  ";
+  let lines = 0;
+  const max = contentMaxLines(term);
 
-  // ── System Status ──
-  drawSectionHeader(term, pad, w, "System Status");
-  drawRow(term, pad, "Claude Code", tools.claude.installed, tools.claude.version || null);
-  drawRow(term, pad, "OpenCode", tools.opencode.installed, tools.opencode.version || null);
-  drawRow(term, pad, "GitHub CLI", tools.gh.installed, tools.gh.loggedIn ? "authenticated" : "not logged in");
-  drawRow(term, pad, "Network", !!(network && network.proxy && network.proxy.http_proxy), network?.proxy?.http_proxy ? "proxy set" : "direct");
+  function okLine() { lines++; if (lines >= max) return true; return false; }
 
-  term("\n");
+  sectionHeader(term, "System Status");
+  if (okLine()) return;
+
+  line(term,
+    { text: pad, fg: "white" },
+    { text: "●", fg: tools.claude.installed ? "brightGreen" : "yellow" },
+    { text: "  Claude Code  ", fg: "white" },
+    { text: tools.claude.installed ? `installed  ${tools.claude.version || ""}` : "not installed", fg: tools.claude.installed ? "green" : "gray" },
+  );
+  if (okLine()) return;
+
+  line(term,
+    { text: pad, fg: "white" },
+    { text: "●", fg: tools.opencode.installed ? "brightGreen" : "yellow" },
+    { text: "  OpenCode     ", fg: "white" },
+    { text: tools.opencode.installed ? `installed  ${tools.opencode.version || ""}` : "not installed", fg: tools.opencode.installed ? "green" : "gray" },
+  );
+  if (okLine()) return;
+
+  line(term,
+    { text: pad, fg: "white" },
+    { text: "●", fg: tools.gh.installed ? (tools.gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
+    { text: "  GitHub CLI   ", fg: "white" },
+    { text: `installed  ${tools.gh.loggedIn ? "authenticated" : "not logged in"}`, fg: tools.gh.loggedIn ? "green" : "gray" },
+  );
+  if (okLine()) return;
+
+  const hasProxy = !!(network && network.proxy && network.proxy.http_proxy);
+  line(term,
+    { text: pad, fg: "white" },
+    { text: "●", fg: hasProxy ? "brightGreen" : "yellow" },
+    { text: "  Network      ", fg: "white" },
+    { text: hasProxy ? "proxy set" : "direct", fg: hasProxy ? "green" : "gray" },
+  );
+  if (okLine()) return;
+
+  line(term, { text: "", fg: "white" });
+  if (okLine()) return;
 
   // ── Providers ──
-  drawSectionHeader(term, pad, w, "Providers");
+  sectionHeader(term, "Providers");
+  if (okLine()) return;
+
   const configured = providers.filter((p) => p.configured);
   if (configured.length === 0) {
-    term.gray(`${pad}No providers configured\n`);
-    term.gray(`${pad}Run `);
-    term.cyan("occier provider connect");
-    term.gray(" to add one\n");
+    line(term,
+      { text: `${pad}No providers configured`, fg: "gray" },
+    );
+    if (okLine()) return;
+    line(term,
+      { text: `${pad}Run `, fg: "gray" },
+      { text: "occier provider connect", fg: "cyan" },
+      { text: " to add one", fg: "gray" },
+    );
+    if (okLine()) return;
   } else {
     for (const p of configured) {
-      term(`${pad}`);
-      term.brightGreen("● ");
-      term.bold(p.label.padEnd(14));
-      term.gray(p.protocol.padEnd(10));
-      term.dim(p.fingerprint || "");
-      term("\n");
+      line(term,
+        { text: pad, fg: "white" },
+        { text: "●", fg: "brightGreen" },
+        { text: `  ${p.label.padEnd(14)}`, fg: "brightWhite" },
+        { text: p.protocol.padEnd(10), fg: "gray" },
+        { text: p.fingerprint || "", fg: "gray" },
+      );
+      if (okLine()) break;
     }
   }
-
-  term("\n");
 
   // ── Summary ──
-  const line = "─".repeat(w - 2);
-  term.gray(`${pad}${line}\n`);
-  term(`${pad}`);
-  term.brightCyan("●");
-  term(`  ${vault.count} credentials  `);
-  term.brightGreen("●");
-  term(`  ${providers.filter((p) => p.configured).length} providers  `);
-  term.brightBlue("●");
-  term(`  ${network?.mirrors?.filter((m) => m.enabled).length || 0} mirrors\n`);
-}
-
-function drawSectionHeader(term, pad, w, title) {
-  term(`${pad}`);
-  term.brightCyan("─ ");
-  term.bold(title);
-  term.gray(` ${"─".repeat(Math.max(0, w - title.length - 4))}\n`);
-}
-
-function drawRow(term, pad, label, ok, detail) {
-  term(`${pad}`);
-  if (ok) term.brightGreen("●");
-  else term.yellow("○");
-  term(" ");
-  term.bold(label.padEnd(14));
-  if (ok) {
-    term.brightGreen("installed");
-    if (detail) {
-      term("  ");
-      term.gray(detail);
-    }
-  } else {
-    term.gray("not installed");
-  }
-  term("\n");
+  const summary = `${vault.count} credentials  |  ${configured.length} providers  |  ${network?.mirrors?.filter((m) => m.enabled).length || 0} mirrors`;
+  line(term,
+    { text: `${pad}${"─".repeat(term.width - 6)}`, fg: "gray" },
+  );
+  line(term,
+    { text: `${pad}`, fg: "white" },
+    { text: summary, fg: "brightWhite" },
+  );
 }
