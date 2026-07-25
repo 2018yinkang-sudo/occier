@@ -43,9 +43,25 @@ const MODES = {
 let _mode = MODES.NAVIGATE;
 let _scrollOffsets = {}; // tabId -> scroll offset
 let _selectedItemIds = {}; // tabId -> selected item id
+let _statusMessage = null;
+let _statusTimer = null;
 
 function setMode(mode) {
   _mode = mode;
+  renderScreen();
+}
+
+function showStatus(message, duration = 2000) {
+  _statusMessage = message;
+  if (_statusTimer) {
+    clearTimeout(_statusTimer);
+    _statusTimer = null;
+  }
+  _statusTimer = setTimeout(() => {
+    _statusTimer = null;
+    _statusMessage = null;
+    renderScreen();
+  }, duration);
   renderScreen();
 }
 
@@ -175,7 +191,7 @@ function handleNavigateKey(key) {
   }
 }
 
-function handleSelectKey(key) {
+async function handleSelectKey(key) {
   const items = getSelectableItems();
   if (items.length === 0) {
     setMode(MODES.NAVIGATE);
@@ -191,7 +207,8 @@ function handleSelectKey(key) {
   } else if (key === "DOWN") {
     idx = Math.min(items.length - 1, idx + 1);
   } else if (key === "ENTER") {
-    // Actions are implemented in Phase 3. For now, return to navigate mode.
+    const result = await invokeAction(items[idx].id);
+    if (result) showStatus(result);
     setMode(MODES.NAVIGATE);
     return;
   } else if (key === "ESCAPE") {
@@ -204,6 +221,17 @@ function handleSelectKey(key) {
   _selectedItemIds[tabId] = items[idx].id;
   scrollToVisibleLine(items[idx].line);
   renderScreen();
+}
+
+async function invokeAction(itemId) {
+  const modPath = MOD_MAP[TABS[_currentTab].id];
+  const mod = _loadedPanels[modPath];
+  if (!mod || typeof mod.handleAction !== "function") return null;
+  try {
+    return await mod.handleAction(term, itemId);
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
 }
 
 function scrollToVisibleLine(line) {
@@ -332,7 +360,9 @@ function drawFooter() {
   term.bgGray();
 
   let text;
-  if (_mode === MODES.SELECT) {
+  if (_statusMessage) {
+    text = `  ${_statusMessage}  `;
+  } else if (_mode === MODES.SELECT) {
     text = "  ↑↓ / Move  Enter:Action  Esc:Back  ";
   } else {
     text = "  ←→ / Tab  ↑↓ / Scroll  Enter:Select  F5:Refresh  q/Esc:Quit  ";

@@ -1,4 +1,4 @@
-import { getToolStatus } from "../../services/tools.mjs";
+import { getToolStatus, installTool, updateTool } from "../../services/tools.mjs";
 import { line, selectedLine, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
@@ -92,4 +92,32 @@ export function getSelectableItems() {
     { id: "opencode", label: "OpenCode", line: 3 },
     { id: "gh", label: "GitHub CLI", line: 6 },
   ];
+}
+
+export async function handleAction(_term, itemId) {
+  if (!_cache) return null;
+  try {
+    if (itemId === "claude") {
+      const { claude } = _cache;
+      if (claude.installed) {
+        await updateTool("claude");
+        _lastUpdate = 0; // force refresh on next render
+        return "Claude Code updated";
+      }
+      await installTool("claude");
+      _lastUpdate = 0;
+      return "Claude Code installed";
+    }
+    if (itemId === "opencode") {
+      await installTool("opencode");
+      _lastUpdate = 0;
+      return "OpenCode installed";
+    }
+    if (itemId === "gh") {
+      return "GitHub CLI: use 'occier tool install gh' in shell";
+    }
+    return null;
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
 }

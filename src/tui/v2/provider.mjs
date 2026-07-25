@@ -1,4 +1,4 @@
-import { getProviderStatus } from "../../services/provider.mjs";
+import { getProviderStatus, testProviderConnectivity } from "../../services/provider.mjs";
 import { line, selectedLine, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
@@ -107,4 +107,23 @@ export function getSelectableItems() {
     // trailing empty line is not used for selection
   }
   return items;
+}
+
+export async function handleAction(_term, itemId) {
+  if (!_cache) return null;
+  const p = _cache.find((x) => x.id === itemId);
+  if (!p) return null;
+
+  try {
+    if (p.configured) {
+      const result = await testProviderConnectivity(itemId);
+      if (result.ok && result.data?.reachable) {
+        return `${p.label} is reachable`;
+      }
+      return `${p.label} unreachable`;
+    }
+    return `${p.label}: use 'occier provider connect ${itemId}'`;
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
 }

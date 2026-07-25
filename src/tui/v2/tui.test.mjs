@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderPanel as dashboardPanel } from "./dashboard.mjs";
 import { renderPanel as networkPanel } from "./network.mjs";
 import { renderPanel as vaultPanel } from "./vault.mjs";
-import { renderPanel as providerPanel, getScrollInfo as providerScrollInfo } from "./provider.mjs";
-import { renderPanel as toolsPanel, getScrollInfo as toolsScrollInfo } from "./tools.mjs";
+import { renderPanel as providerPanel, getSelectableItems as providerItems, handleAction as providerAction } from "./provider.mjs";
+import { renderPanel as toolsPanel, getSelectableItems as toolsItems, handleAction as toolsAction } from "./tools.mjs";
 import { renderPanel as projectsPanel } from "./projects.mjs";
 import { line, sectionHeader, selectedLine, makeLineBudget } from "./panel-utils.mjs";
 
@@ -38,6 +38,12 @@ function createMockTerm() {
 
   return { term, lines };
 }
+
+beforeEach(() => {
+  // Other test files may leave Vitest fake timers active. The panel tests call
+  // real services, so they need real timers to avoid flaky timeouts.
+  vi.useRealTimers();
+});
 
 describe("TUI panels", () => {
   it("dashboard panel renders without error", async () => {
@@ -115,9 +121,11 @@ describe("TUI panels", () => {
     await expect(toolsPanel(term, { mode: "select", cursorItemId: "opencode" })).resolves.toBeUndefined();
   });
 
-  it("scrollable panels export getScrollInfo", () => {
-    expect(typeof toolsScrollInfo).toBe("function");
-    expect(typeof providerScrollInfo).toBe("function");
+  it("scrollable panels export getSelectableItems and handleAction", () => {
+    expect(typeof toolsItems).toBe("function");
+    expect(typeof toolsAction).toBe("function");
+    expect(typeof providerItems).toBe("function");
+    expect(typeof providerAction).toBe("function");
   });
 });
 
