@@ -385,7 +385,9 @@ export class EncryptedFileStore extends CredentialStore {
     }
 
     if (raw.length < SALT_LEN + IV_LEN + TAG_LEN + 1) {
-      return {};
+      const msg = "Vault file is too short — may be corrupted";
+      process.stderr.write(`\n\x1b[33m⚠\x1b[0m  ${msg}\n\n`);
+      throw new Error(msg);
     }
 
     const salt = raw.subarray(0, SALT_LEN);
@@ -437,8 +439,12 @@ export class EncryptedFileStore extends CredentialStore {
     const key = deriveKey(this.masterKey, salt);
     const decipher = createDecipheriv("aes-256-gcm", key, iv);
     decipher.setAuthTag(tag);
-    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    return JSON.parse(decrypted.toString("utf-8"));
+    try {
+      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+      return JSON.parse(decrypted.toString("utf-8"));
+    } catch {
+      return {};
+    }
   }
 
   async _writeEncrypted(data) {

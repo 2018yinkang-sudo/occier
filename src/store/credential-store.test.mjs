@@ -190,3 +190,135 @@ describe("maskValue", () => {
     expect(maskValue("sk-abcdefgh12345678")).toBe("sk-a****5678");
   });
 });
+
+// ── S1-S4: passphrase, salt, iterations, file lock, has() ──
+
+describe("EncryptedFileStore — has()", () => {
+  it("has returns true for existing key", async () => {
+    const { createStore } = await import("./credential-store.mjs");
+    const store = createStore("encrypted");
+    await store.set("has_test", { type: "api_key", value: "secret", updatedAt: new Date().toISOString() });
+    const exists = await store.has("has_test");
+    expect(exists).toBe(true);
+  });
+
+  it("has returns false for missing key", async () => {
+    const { createStore } = await import("./credential-store.mjs");
+    const store = createStore("encrypted");
+    const exists = await store.has("never_set_xyz");
+    expect(exists).toBe(false);
+  });
+});
+
+describe("EncryptedFileStore — password-protected vault", () => {
+  const passFile = join(tmpdir(), "occier-test-pass.enc");
+
+  it("createStore accepts passphrase option", async () => {
+    const { createStore } = await import("./credential-store.mjs");
+    const store = createStore("encrypted", { passphrase: "my-secret-pass", filePath: passFile });
+    await store.set("pass_key", { type: "api_key", value: "sensitive", updatedAt: new Date().toISOString() });
+
+    const result = await store.get("pass_key");
+    expect(result).toBeTruthy();
+    expect(result.value).toBe("sensitive");
+  });
+
+  it("wrong passphrase cannot read data", async () => {
+    const { createStore } = await import("./credential-store.mjs");
+    const store = createStore("encrypted", { passphrase: "wrong-pass", filePath: passFile });
+    const result = await store.get("pass_key");
+    expect(result).toBeNull();
+  });
+
+  it("correct passphrase re-reads successfully", async () => {
+    const { createStore } = await import("./credential-store.mjs");
+    const store = createStore("encrypted", { passphrase: "my-secret-pass", filePath: passFile });
+    const result = await store.get("pass_key");
+    expect(result.value).toBe("sensitive");
+  });
+});
+
+describe("EncryptedFileStore — migration", () => {
+  const migrateFile = join(tmpdir(), `occier-test-migrate-${Date.now()}-${Math.random().toString(36).slice(2)}.enc`);
+
+  it("auto-migrates legacy vault on first write", async () => {
+    const { readVaultMetaSync, createStore } = await import("./credential-store.mjs");
+
+    // Create with default (device fingerprint) — no meta initially
+    const store1 = createStore("encrypted", { filePath: migrateFile });
+    let meta = readVaultMetaSync(migrateFile);
+    expect(meta).toBeNull();
+
+    // Write triggers migration — meta should now exist
+    await store1.set("legacy_key", { type: "api_key", value: "old-value", updatedAt: new Date().toISOString() });
+    meta = readVaultMetaSync(migrateFile);
+    expect(meta).toBeTruthy();
+    expect(meta.version).toBe(2);
+    expect(meta.iterations).toBe(600000);
+
+    // Re-read should work with new params
+    const store2 = createStore("encrypted", { filePath: migrateFile });
+    const result = await store2.get("legacy_key");
+    expect(result.value).toBe("old-value");
+  });
+});
+
+describe("getDeviceFingerprint", () => {
+  it("returns a non-empty string", async () => {
+    const { getDeviceFingerprint } = await import("./credential-store.mjs");
+    const fp = getDeviceFingerprint();
+    expect(typeof fp).toBe("string");
+    expect(fp.length).toBeGreaterThan(0);
+  });
+
+  it("includes hostname", async () => {
+    const { getDeviceFingerprint } = await import("./credential-store.mjs");
+    const { hostname } = await import("os");
+    const fp = getDeviceFingerprint();
+    expect(fp).toContain(hostname());
+  });
+});
+
+describe("deriveMasterKey", () => {
+  it("produces a 64-char hex key", async () => {
+    const { deriveMasterKey } = await import("./credential-store.mjs");
+    const key = deriveMasterKey("test-phrase", "test-salt", 10);
+    expect(typeof key).toBe("string");
+    expect(key.length).toBe(64);
+  });
+
+  it("different passphrases produce different keys", async () => {
+    const { deriveMasterKey } = await import("./credential-store.mjs");
+    const k1 = deriveMasterKey("pass1", "salt", 100);
+    const k2 = deriveMasterKey("pass2", "salt", 100);
+    expect(k1).not.toBe(k2);
+  });
+
+  it("different salts produce different keys", async () => {
+    const { deriveMasterKey } = await import("./credential-store.mjs");
+    const k1 = deriveMasterKey("same", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", 100);
+    const k2 = deriveMasterKey("same", "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=", 100);
+    expect(k1).not.toBe(k2);
+  });
+});
+
+describe("readVaultMetaSync", () => {
+  it("returns null for non-existent vault", async () => {
+    const { readVaultMetaSync } = await import("./credential-store.mjs");
+    const meta = readVaultMetaSync("/tmp/no-such-vault.enc");
+    expect(meta).toBeNull();
+  });
+});
+
+describe("EncryptedFileStore — corrupted file", () => {
+  it("throws for too-short encrypted file", async () => {
+    const { EncryptedFileStore } = await import("./credential-store.mjs");
+    const badFile = join(tmpdir(), "occier-test-corrupt.enc");
+    const { writeFile } = await import("fs/promises");
+    await writeFile(badFile, "too short");
+
+    const store = new EncryptedFileStore("deadbeef", badFile);
+    await expect(store.get("any")).rejects.toThrow(/too short/);
+  });
+});
+

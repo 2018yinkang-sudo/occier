@@ -54,9 +54,9 @@ export async function renderPanel(term, state, budget) {
   );
   if (budget.okLine()) return;
   line(term,
-    { text: `${pad}Run `, fg: "gray" },
-    { text: "occier vault list", fg: "cyan" },
-      { text: " to manage credentials", fg: "gray" },
+    { text: `${pad}Press `, fg: "gray" },
+    { text: "Enter", fg: "cyan" },
+      { text: " on a key to remove it, or 'Add credential' to add.", fg: "gray" },
   );
   term.styleReset();
 }
