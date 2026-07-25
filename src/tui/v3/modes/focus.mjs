@@ -34,6 +34,12 @@ export const focusMode = {
       if (itemId) ctx.invokeAction(itemId);
     } else if (key === "F5") {
       ctx.refreshTab();
+    } else if (/^[1-6]$/.test(key)) {
+      ctx.jumpToTab(Number(key) - 1);
+    } else if (key === "/") {
+      ctx.setMode("search");
+    } else if (key === "l") {
+      ctx.setMode("log");
     }
   },
 

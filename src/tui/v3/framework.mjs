@@ -7,6 +7,8 @@ import { createState, getCursorItemId, getScrollOffset, setScrollOffset } from "
 import { theme } from "./theme.mjs";
 import { focusMode } from "./modes/focus.mjs";
 import { inputMode } from "./modes/input.mjs";
+import { searchMode } from "./modes/search.mjs";
+import { logMode } from "./modes/log.mjs";
 
 const term = termkit.terminal;
 
@@ -43,6 +45,8 @@ let _loadedPanels = {};
 const MODES = {
   focus: focusMode,
   input: inputMode,
+  search: searchMode,
+  log: logMode,
 };
 
 // ── Public API ──
@@ -65,7 +69,16 @@ export function startDashboard(initialTab = 0) {
       return;
     }
 
-    if (key === "CTRL_C" || key === "ESCAPE" || key === "q") {
+    if (key === "CTRL_C") {
+      exitDashboard();
+      return;
+    }
+
+    if (key === "ESCAPE" || key === "q") {
+      if (_state.actionInFlight) {
+        showStatus("Action in progress — wait or press Ctrl+C to force quit", "error");
+        return;
+      }
       exitDashboard();
       return;
     }
@@ -170,10 +183,73 @@ async function renderScreen() {
     drawInputModal();
   } else {
     term.hideCursor();
-    drawStatusLine();
+    if (_state.mode === "log") {
+      drawLogOverlay();
+    }
+    if (_state.mode === "search") {
+      drawSearchBar();
+    } else {
+      drawStatusLine();
+    }
     drawFooter();
     try { term.eraseDisplayAfter(); } catch { /* non-TTY: skip */ }
   }
+}
+
+function drawSearchBar() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  const h = Number.isFinite(term.height) ? term.height : 24;
+  const query = _state.search?.query || "";
+  term.moveTo(1, h - 1);
+  term.styleReset();
+  term[theme.chrome.statusLine.bg]();
+  term.brightWhite(`  /${query}`);
+  const pad = Math.max(0, w - 3 - query.length);
+  if (pad > 0) term.black(" ".repeat(pad));
+  term.styleReset();
+}
+
+function drawLogOverlay() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  const h = Number.isFinite(term.height) ? term.height : 24;
+  const overlayHeight = Math.min(16, h - 5);
+  const startRow = Math.max(3, h - 2 - overlayHeight);
+
+  // Clear overlay area
+  for (let r = startRow; r <= startRow + overlayHeight; r++) {
+    term.moveTo(1, r);
+    term.styleReset();
+    term.bgBlack();
+    term(" ".repeat(w));
+  }
+
+  // Title bar
+  term.moveTo(1, startRow);
+  term.styleReset();
+  term.bgBrightWhite();
+  term.black("  Status Log ".padEnd(w));
+  term.styleReset();
+
+  // Messages
+  const messages = _state.statusHistory.slice(-(overlayHeight - 2));
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    const spec = theme.status[msg.kind] || theme.status.info;
+    const time = new Date(msg.ts).toLocaleTimeString();
+    const line = `  ${spec.icon} ${time}  ${msg.message}`;
+    term.moveTo(1, startRow + 1 + i);
+    term.styleReset();
+    term.bgBlack();
+    term[spec.fg](line.slice(0, w));
+    term.black(" ".repeat(Math.max(0, w - line.length)));
+  }
+
+  // Help line
+  term.moveTo(1, startRow + overlayHeight);
+  term.styleReset();
+  term.bgGray();
+  term.brightCyan("  Esc / q / l / Enter to close  ".padEnd(w));
+  term.styleReset();
 }
 
 function drawHeader() {
@@ -184,7 +260,8 @@ function drawHeader() {
   term[theme.chrome.header.bg]();
   term[theme.chrome.header.fg]();
   term.bold();
-  const text = `  occier  v${VERSION} —  ${tab.label} `;
+  const spinner = _state.actionInFlight ? " ⟳" : "";
+  const text = `  occier  v${VERSION} —  ${tab.label}${spinner} `;
   term.white(text);
   const pad = Math.max(0, w - text.length);
   if (pad > 0) term.white(" ".repeat(pad));
