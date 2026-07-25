@@ -17,55 +17,74 @@ export async function renderPanel(term, refreshFn) {
   }
 
   const { tools, providers, network, vault } = _cache;
+  const w = Math.min(64, term.width - 4);
+  const pad = "  ";
 
-  drawSection(term, "System Status");
-  drawStatusLine(term, "Network", network && network.proxy && network.proxy.http_proxy ? "proxy set" : "no proxy", !!network);
-  drawStatusLine(term, "Claude Code", tools.claude.installed ? `v${tools.claude.version || ""}` : "not installed", tools.claude.installed);
-  drawStatusLine(term, "OpenCode", tools.opencode.installed ? `v${tools.opencode.version || ""}` : "not installed", tools.opencode.installed);
-  drawStatusLine(term, "GitHub", tools.gh && tools.gh.loggedIn ? "logged in" : "not logged in", !!(tools.gh && tools.gh.loggedIn));
-  drawStatusLine(term, "Credentials", `${vault.count} stored`, vault.count > 0);
+  // ── System Status ──
+  drawSectionHeader(term, pad, w, "System Status");
+  drawRow(term, pad, "Claude Code", tools.claude.installed, tools.claude.version || null);
+  drawRow(term, pad, "OpenCode", tools.opencode.installed, tools.opencode.version || null);
+  drawRow(term, pad, "GitHub CLI", tools.gh.installed, tools.gh.loggedIn ? "authenticated" : "not logged in");
+  drawRow(term, pad, "Network", !!(network && network.proxy && network.proxy.http_proxy), network?.proxy?.http_proxy ? "proxy set" : "direct");
 
   term("\n");
-  drawSection(term, "Configured Providers");
-  if (providers) {
-    const configured = providers.filter((p) => p.configured);
-    if (configured.length === 0) {
-      term.gray("  No providers configured\n");
-    } else {
-      for (const p of configured) {
-        term("  ");
-        term.green("●");
-        term(" ");
-        term.bold(p.label);
-        term("  ");
-        term.gray(p.fingerprint || "");
-        term("\n");
-      }
+
+  // ── Providers ──
+  drawSectionHeader(term, pad, w, "Providers");
+  const configured = providers.filter((p) => p.configured);
+  if (configured.length === 0) {
+    term.gray(`${pad}No providers configured\n`);
+    term.gray(`${pad}Run `);
+    term.cyan("occier provider connect");
+    term.gray(" to add one\n");
+  } else {
+    for (const p of configured) {
+      term(`${pad}`);
+      term.brightGreen("● ");
+      term.bold(p.label.padEnd(14));
+      term.gray(p.protocol.padEnd(10));
+      term.dim(p.fingerprint || "");
+      term("\n");
     }
   }
 
   term("\n");
-  term.gray("  Press Tab/Arrows to switch panels  ");
-  term.gray("|  F5 to refresh\n");
+
+  // ── Summary ──
+  const line = "─".repeat(w - 2);
+  term.gray(`${pad}${line}\n`);
+  term(`${pad}`);
+  term.brightCyan("●");
+  term(`  ${vault.count} credentials  `);
+  term.brightGreen("●");
+  term(`  ${providers.filter((p) => p.configured).length} providers  `);
+  term.brightBlue("●");
+  term(`  ${network?.mirrors?.filter((m) => m.enabled).length || 0} mirrors\n`);
 
   if (refreshFn) refreshFn();
 }
 
-function drawSection(term, title) {
-  term.bold("\n  ");
-  term.bold.white("── ");
+function drawSectionHeader(term, pad, w, title) {
+  term(`${pad}`);
+  term.brightCyan("─ ");
   term.bold(title);
-  term.bold.white(" ──\n");
+  term.gray(` ${"─".repeat(Math.max(0, w - title.length - 4))}\n`);
 }
 
-function drawStatusLine(term, label, value, ok) {
-  term("  ");
-  if (ok) term.green("●");
+function drawRow(term, pad, label, ok, detail) {
+  term(`${pad}`);
+  if (ok) term.brightGreen("●");
   else term.yellow("○");
   term(" ");
-  term(label.padEnd(14));
-  term(" ");
-  if (ok) term.green(value);
-  else term.gray(value);
+  term.bold(label.padEnd(14));
+  if (ok) {
+    term.brightGreen("installed");
+    if (detail) {
+      term("  ");
+      term.gray(detail);
+    }
+  } else {
+    term.gray("not installed");
+  }
   term("\n");
 }

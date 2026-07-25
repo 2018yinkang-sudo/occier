@@ -10,25 +10,39 @@ export async function renderPanel(term, refreshFn) {
     _lastUpdate = now;
   }
 
-  term.bold("\n  ── Credential Vault ──\n\n");
+  const w = Math.min(64, term.width - 4);
+  const pad = "  ";
+
+  drawSectionHeader(term, pad, w, "Credential Vault");
 
   if (_cache.count === 0) {
-    term.gray("  No credentials stored\n");
-    term.gray("  Run 'occier vault set' to add one\n");
+    term.gray(`${pad}No credentials stored\n`);
+    term.gray(`${pad}Run `);
+    term.cyan("occier vault set");
+    term.gray(" to add one\n");
   } else {
     for (const cred of _cache.credentials) {
-      term("  ");
-      term.cyan("●");
-      term(" ");
-      term(cred.key.padEnd(25));
+      term(`${pad}`);
+      term.brightCyan("● ");
+      term.bold(cred.key.padEnd(25));
       term.gray(cred.type.padEnd(12));
-      term.gray(cred.fingerprint);
+      term.dim(cred.fingerprint);
       term("\n");
     }
   }
 
   term("\n");
-  term.gray("  Press Tab/Arrows to switch  |  F5 to refresh\n");
+  term.gray(`${pad}All keys are stored encrypted.\n`);
+  term.gray(`${pad}Run `);
+  term.cyan("occier vault list");
+  term.gray(" for details\n");
 
   if (refreshFn) refreshFn();
+}
+
+function drawSectionHeader(term, pad, w, title) {
+  term(`${pad}`);
+  term.brightCyan("─ ");
+  term.bold(title);
+  term.gray(` ${"─".repeat(Math.max(0, w - title.length - 4))}\n`);
 }

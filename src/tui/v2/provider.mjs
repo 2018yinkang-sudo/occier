@@ -10,43 +10,51 @@ export async function renderPanel(term, refreshFn) {
     _lastUpdate = now;
   }
 
-  term.bold("\n  ── Providers ──\n\n");
+  const w = Math.min(64, term.width - 4);
+  const pad = "  ";
 
-  if (!_cache || _cache.length === 0) {
-    term.gray("  No providers available\n");
-  } else {
-    const configured = _cache.filter((p) => p.configured);
-    const unconfigured = _cache.filter((p) => !p.configured);
+  drawSectionHeader(term, pad, w, "Providers");
 
-    if (configured.length > 0) {
-      term("  Configured:\n");
-      for (const p of configured) {
-        term("    ");
-        term.green("●");
-        term(" ");
-        term.bold(p.label.padEnd(14));
-        term.gray(p.protocol + "  ");
-        term.gray(p.fingerprint || "");
-        term("\n");
-      }
+  const configured = _cache.filter((p) => p.configured);
+  const available = _cache.filter((p) => !p.configured);
+
+  if (configured.length > 0) {
+    term(`${pad}`);
+    term.brightGreen("Configured:\n");
+    for (const p of configured) {
+      term(`${pad}`);
+      term.brightGreen("● ");
+      term.bold(p.label.padEnd(14));
+      term.gray(p.protocol.padEnd(10));
+      term.dim(p.fingerprint || "");
       term("\n");
     }
-
-    if (unconfigured.length > 0) {
-      term("  Available:\n");
-      for (const p of unconfigured) {
-        term("    ");
-        term.gray("○");
-        term(" ");
-        term(p.label.padEnd(14));
-        term.gray(p.protocol);
-        term("\n");
-      }
-    }
+    term("\n");
   }
 
-  term("\n");
-  term.gray("  Press Tab/Arrows to switch  |  F5 to refresh\n");
+  if (available.length > 0) {
+    term(`${pad}`);
+    term.bold("Available:\n");
+    for (const p of available) {
+      term(`${pad}`);
+      term.gray("○ ");
+      term(p.label.padEnd(14));
+      term.gray(p.protocol);
+      term("\n");
+    }
+    term("\n");
+  }
+
+  term.gray(`${pad}Run `);
+  term.cyan("occier provider connect");
+  term.gray(" to configure\n");
 
   if (refreshFn) refreshFn();
+}
+
+function drawSectionHeader(term, pad, w, title) {
+  term(`${pad}`);
+  term.brightCyan("─ ");
+  term.bold(title);
+  term.gray(` ${"─".repeat(Math.max(0, w - title.length - 4))}\n`);
 }

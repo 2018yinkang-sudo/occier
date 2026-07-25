@@ -11,49 +11,56 @@ export async function renderPanel(term, refreshFn) {
   }
 
   const { claude, opencode, gh } = _cache;
+  const w = Math.min(64, term.width - 4);
+  const pad = "  ";
 
-  term.bold("\n  ── Development Tools ──\n\n");
+  drawSectionHeader(term, pad, w, "Development Tools");
 
-  drawToolRow(term, "Claude Code", claude.installed, claude.version);
-  drawToolRow(term, "OpenCode", opencode.installed, opencode.version);
-
-  term("\n");
-  term.bold("  ── GitHub ──\n\n");
-  if (gh && gh.installed) {
-    drawToolRow(term, "GitHub CLI", true, gh.loggedIn ? "authenticated" : "not logged in");
-  } else {
-    drawToolRow(term, "GitHub CLI", false, null);
-  }
+  drawTool(term, pad, "Claude Code", claude.installed, claude.version);
+  drawTool(term, pad, "OpenCode", opencode.installed, opencode.version);
 
   term("\n");
-  term("  ");
+
+  drawSectionHeader(term, pad, w, "GitHub");
+  drawTool(term, pad, "GitHub CLI", gh.installed, gh.loggedIn ? "authenticated" : "not logged in");
+
+  term("\n");
+
+  term.gray(`${pad}Commands:\n`);
+  term(`${pad}  `);
   term.cyan("occier tool install claude");
-  term("\n  ");
+  term("\n");
+  term(`${pad}  `);
   term.cyan("occier tool install opencode");
-  term("\n  ");
+  term("\n");
+  term(`${pad}  `);
   term.cyan("occier tool update claude");
   term("\n");
-
-  term("\n");
-  term.gray("  Press Tab/Arrows to switch  |  F5 to refresh\n");
 
   if (refreshFn) refreshFn();
 }
 
-function drawToolRow(t, name, installed, detail) {
-  t("  ");
-  if (installed) t.green("●");
-  else t.yellow("○");
-  t(" ");
-  t(name.padEnd(16));
+function drawTool(term, pad, name, installed, detail) {
+  term(`${pad}`);
+  if (installed) term.brightGreen("●");
+  else term.yellow("○");
+  term(" ");
+  term.bold(name.padEnd(16));
   if (installed) {
-    t.green("installed");
+    term.brightGreen("installed");
     if (detail) {
-      t("  ");
-      t.gray(detail);
+      term("  ");
+      term.gray(detail);
     }
   } else {
-    t.gray("not installed");
+    term.gray("not installed");
   }
-  t("\n");
+  term("\n");
+}
+
+function drawSectionHeader(term, pad, w, title) {
+  term(`${pad}`);
+  term.brightCyan("─ ");
+  term.bold(title);
+  term.gray(` ${"─".repeat(Math.max(0, w - title.length - 4))}\n`);
 }
