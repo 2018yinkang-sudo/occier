@@ -1,5 +1,5 @@
 import { getToolStatus } from "../../services/tools.mjs";
-import { line, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
+import { line, selectedLine, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
 let _cache = null;
@@ -13,58 +13,66 @@ export async function renderPanel(term, state = {}) {
 
   const { claude, opencode, gh } = _cache;
   const pad = "  ";
-  const okLine = makeLineBudget(term, state.scrollOffset ?? 0);
+  const budget = makeLineBudget(term, state.scrollOffset ?? 0);
+  const selectedId = state.mode === "select" ? state.cursorItemId : null;
+  const draw = (id, ...parts) => {
+    if (id && selectedId === id) {
+      selectedLine(term, ...parts);
+    } else {
+      line(term, ...parts);
+    }
+  };
 
   sectionHeader(term, "Development Tools");
-  if (okLine()) return;
+  if (budget.okLine()) return;
 
-  line(term,
+  draw("claude",
     { text: pad, fg: "white" },
     { text: "●", fg: claude.installed ? "brightGreen" : "yellow" },
     { text: "  Claude Code  ".padEnd(18), fg: "brightWhite" },
     { text: claude.installed ? `installed  ${claude.version || ""}` : "not installed", fg: claude.installed ? "green" : "gray" },
   );
-  if (okLine()) return;
+  if (budget.okLine()) return;
 
-  line(term,
+  draw("opencode",
     { text: pad, fg: "white" },
     { text: "●", fg: opencode.installed ? "brightGreen" : "yellow" },
     { text: "  OpenCode     ".padEnd(18), fg: "brightWhite" },
     { text: opencode.installed ? `installed  ${opencode.version || ""}` : "not installed", fg: opencode.installed ? "green" : "gray" },
   );
-  if (okLine()) return;
+  if (budget.okLine()) return;
 
   line(term, { text: "", fg: "white" });
-  if (okLine()) return;
+  if (budget.okLine()) return;
 
   sectionHeader(term, "GitHub");
-  if (okLine()) return;
+  if (budget.okLine()) return;
 
-  line(term,
+  draw("gh",
     { text: pad, fg: "white" },
     { text: "●", fg: gh.installed ? (gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
     { text: "  GitHub CLI   ".padEnd(18), fg: "brightWhite" },
     { text: gh.installed ? (gh.loggedIn ? "authenticated" : "not logged in") : "not installed", fg: gh.installed ? (gh.loggedIn ? "green" : "gray") : "gray" },
   );
-  if (okLine()) return;
+  if (budget.okLine()) return;
 
   line(term, { text: "", fg: "white" });
-  if (okLine()) return;
+  if (budget.okLine()) return;
 
   line(term,
     { text: `${pad}Commands:`, fg: "brightWhite" },
   );
-  if (okLine()) return;
+  if (budget.okLine()) return;
   line(term,
     { text: `${pad}  `, fg: "white" },
     { text: "occier tool install claude", fg: "cyan" },
   );
-  if (okLine()) return;
+  if (budget.okLine()) return;
   line(term,
     { text: `${pad}  `, fg: "white" },
     { text: "occier tool install opencode", fg: "cyan" },
   );
-  if (okLine()) return;
+  if (budget.okLine()) return;
   line(term,
     { text: `${pad}  `, fg: "white" },
     { text: "occier tool update claude", fg: "cyan" },
@@ -75,4 +83,13 @@ export async function renderPanel(term, state = {}) {
 export function getScrollInfo() {
   // Tools panel content is a fixed 12 logical lines.
   return { supportsScroll: true, totalLines: 12 };
+}
+
+export function getSelectableItems() {
+  if (!_cache) return [];
+  return [
+    { id: "claude", label: "Claude Code", line: 2 },
+    { id: "opencode", label: "OpenCode", line: 3 },
+    { id: "gh", label: "GitHub CLI", line: 6 },
+  ];
 }

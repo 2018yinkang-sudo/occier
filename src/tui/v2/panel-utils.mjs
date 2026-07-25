@@ -50,15 +50,47 @@ export function contentMaxLines(term) {
 // Create a scroll-aware line budgeter. Panels use this exactly like the
 // previous `let lines = 0; function okLine() {...}` pattern, but it also
 // skips `scrollOffset` logical lines at the top and clamps at `max` drawn
-// lines. Returns the budgeting function.
+// lines. Returns the budgeting object.
 export function makeLineBudget(term, scrollOffset = 0) {
   const max = contentMaxLines(term);
   let logical = 0;
   let drawn = 0;
-  return function okLine() {
-    logical++;
-    if (logical <= scrollOffset) return false;
-    drawn++;
-    return drawn > max;
+  return {
+    // Returns true when the panel has filled the viewport and should stop.
+    okLine() {
+      logical++;
+      if (logical <= scrollOffset) return false;
+      drawn++;
+      return drawn > max;
+    },
+    // 1-based logical line number that is about to be drawn.
+    get nextLine() { return logical + 1; },
   };
+}
+
+// Same as `line()` but renders with a bright white background and black
+// foreground to indicate the currently selected interactive row.
+export function selectedLine(term, ...parts) {
+  term.styleReset();
+  term.bgBrightWhite();
+
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  let remaining = w;
+
+  for (const p of parts) {
+    if (remaining <= 0) break;
+    if (typeof p === "string") {
+      const text = p.length > remaining ? p.slice(0, remaining) : p;
+      term.black(text);
+      remaining -= text.length;
+    } else {
+      const text = (p.text ?? "").length > remaining
+        ? (p.text ?? "").slice(0, remaining)
+        : (p.text ?? "");
+      term.black(text);
+      remaining -= text.length;
+    }
+  }
+
+  term("\n");
 }

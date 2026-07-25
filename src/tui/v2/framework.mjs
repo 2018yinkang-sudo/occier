@@ -42,10 +42,15 @@ const MODES = {
 };
 let _mode = MODES.NAVIGATE;
 let _scrollOffsets = {}; // tabId -> scroll offset
+let _selectedItemIds = {}; // tabId -> selected item id
 
 function setMode(mode) {
   _mode = mode;
   renderScreen();
+}
+
+function currentTabId() {
+  return TABS[_currentTab].id;
 }
 
 // ── Public API ──
@@ -72,6 +77,8 @@ export function startDashboard(initialTab = 0) {
 
     if (_mode === MODES.NAVIGATE) {
       handleNavigateKey(key);
+    } else if (_mode === MODES.SELECT) {
+      handleSelectKey(key);
     }
   });
 
@@ -125,9 +132,10 @@ async function renderScreen() {
   // cannot write to arbitrary locations on the screen.
   term.moveTo(1, CONTENT_START);
 
-  const tabId = TABS[_currentTab].id;
+  const tabId = currentTabId();
   const scrollOffset = _scrollOffsets[tabId] || 0;
-  await drawContent({ scrollOffset });
+  const cursorItemId = _selectedItemIds[tabId] ?? null;
+  await drawContent({ scrollOffset, cursorItemId, mode: _mode }, gen);
 
   // If the user has switched tabs since we started, do not paint a stale footer.
   if (gen !== _renderGen) return;
@@ -138,10 +146,10 @@ async function renderScreen() {
   try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
 }
 
-function drawContent(state = {}) {
+function drawContent(state = {}, gen) {
   const modPath = MOD_MAP[TABS[_currentTab].id];
   if (!modPath) return Promise.resolve();
-  return loadPanel(modPath, state);
+  return loadPanel(modPath, state, gen);
 }
 
 function handleNavigateKey(key) {
@@ -155,6 +163,69 @@ function handleNavigateKey(key) {
     scrollContent(-1);
   } else if (key === "DOWN") {
     scrollContent(1);
+  } else if (key === "ENTER") {
+    const items = getSelectableItems();
+    if (items.length > 0) {
+      const tabId = currentTabId();
+      if (_selectedItemIds[tabId] === undefined) {
+        _selectedItemIds[tabId] = items[0].id;
+      }
+      setMode(MODES.SELECT);
+    }
+  }
+}
+
+function handleSelectKey(key) {
+  const items = getSelectableItems();
+  if (items.length === 0) {
+    setMode(MODES.NAVIGATE);
+    return;
+  }
+
+  const tabId = currentTabId();
+  let idx = items.findIndex((i) => i.id === _selectedItemIds[tabId]);
+  if (idx < 0) idx = 0;
+
+  if (key === "UP") {
+    idx = Math.max(0, idx - 1);
+  } else if (key === "DOWN") {
+    idx = Math.min(items.length - 1, idx + 1);
+  } else if (key === "ENTER") {
+    // Actions are implemented in Phase 3. For now, return to navigate mode.
+    setMode(MODES.NAVIGATE);
+    return;
+  } else if (key === "ESCAPE") {
+    setMode(MODES.NAVIGATE);
+    return;
+  } else {
+    return;
+  }
+
+  _selectedItemIds[tabId] = items[idx].id;
+  scrollToVisibleLine(items[idx].line);
+  renderScreen();
+}
+
+function scrollToVisibleLine(line) {
+  const viewportLines = contentMaxLines(term);
+  const tabId = currentTabId();
+  const current = _scrollOffsets[tabId] || 0;
+  // line is 1-based; current is the number of logical lines already scrolled past.
+  if (line <= current + 1) {
+    _scrollOffsets[tabId] = Math.max(0, line - 1);
+  } else if (line > current + viewportLines) {
+    _scrollOffsets[tabId] = Math.max(0, line - viewportLines);
+  }
+}
+
+function getSelectableItems() {
+  const modPath = MOD_MAP[TABS[_currentTab].id];
+  const mod = _loadedPanels[modPath];
+  if (!mod || typeof mod.getSelectableItems !== "function") return [];
+  try {
+    return mod.getSelectableItems();
+  } catch {
+    return [];
   }
 }
 
@@ -186,8 +257,7 @@ function getPanelScrollInfo() {
   }
 }
 
-async function loadPanel(modPath, state = {}) {
-  const gen = ++_renderGen;
+async function loadPanel(modPath, state = {}, gen) {
   try {
     let mod = _loadedPanels[modPath];
     if (!mod) {
@@ -260,10 +330,15 @@ function drawFooter() {
   term.moveTo(1, h);
   term.styleReset();
   term.bgGray();
-  term.brightCyan("  ←→ / Tab:Switch  ");
-  term.brightWhite("F5:Refresh  ");
-  term.brightWhite("q/Esc:Quit  ");
-  const text = "  ←→ / Tab:Switch  F5:Refresh  q/Esc:Quit  ";
+
+  let text;
+  if (_mode === MODES.SELECT) {
+    text = "  ↑↓ / Move  Enter:Action  Esc:Back  ";
+  } else {
+    text = "  ←→ / Tab  ↑↓ / Scroll  Enter:Select  F5:Refresh  q/Esc:Quit  ";
+  }
+
+  term.brightCyan(text);
   const pad = Math.max(0, w - text.length);
   if (pad > 0) term.white(" ".repeat(pad));
   term.styleReset();

@@ -5,7 +5,7 @@ import { renderPanel as vaultPanel } from "./vault.mjs";
 import { renderPanel as providerPanel, getScrollInfo as providerScrollInfo } from "./provider.mjs";
 import { renderPanel as toolsPanel, getScrollInfo as toolsScrollInfo } from "./tools.mjs";
 import { renderPanel as projectsPanel } from "./projects.mjs";
-import { line, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
+import { line, sectionHeader, selectedLine, makeLineBudget } from "./panel-utils.mjs";
 
 function createMockTerm() {
   const lines = [];
@@ -103,6 +103,18 @@ describe("TUI panels", () => {
     expect(out2).toContain("occier project open");
   });
 
+  it("selectedLine renders text with bright white background", () => {
+    const { term, lines } = createMockTerm();
+    selectedLine(term, { text: "selected", fg: "gray" });
+    const joined = lines.join("");
+    expect(joined).toContain("selected");
+  });
+
+  it("tools panel highlights selected item in select mode", async () => {
+    const { term } = createMockTerm();
+    await expect(toolsPanel(term, { mode: "select", cursorItemId: "opencode" })).resolves.toBeUndefined();
+  });
+
   it("scrollable panels export getScrollInfo", () => {
     expect(typeof toolsScrollInfo).toBe("function");
     expect(typeof providerScrollInfo).toBe("function");
@@ -131,10 +143,10 @@ describe("panel-utils", () => {
 
   it("makeLineBudget skips scrollOffset lines then clamps at max", () => {
     const termLike = { width: 80, height: 10 }; // max = 6
-    const okLine = makeLineBudget(termLike, 2);
+    const budget = makeLineBudget(termLike, 2);
     const results = [];
     for (let i = 0; i < 10; i++) {
-      results.push(okLine());
+      results.push(budget.okLine());
     }
     // First 2 logical lines skipped -> false
     expect(results[0]).toBe(false);

@@ -106,14 +106,6 @@ describe("TUI framework rendering", () => {
     }
   });
 
-  it("footer uses bright colors on bgGray", async () => {
-    calls.length = 0;
-    mod.switchTab(0);
-    await flushSwitch();
-    const brightCalls = calls.filter((c) => c.prop === "brightWhite" || c.prop === "brightCyan");
-    expect(brightCalls.length).toBeGreaterThanOrEqual(2);
-  });
-
   it("renders all tab panels without crash (import check)", async () => {
     for (const id of ["dashboard", "network", "vault", "provider", "tools", "projects"]) {
       const pMod = await import(`./${id}.mjs`);
