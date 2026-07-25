@@ -34,46 +34,8 @@ const HELP = `
 `;
 
 async function displayDashboard() {
-  const { detectAll } = await import('./env/detect.mjs');
-  const env = await detectAll();
-
-  console.log(`  ${c.boldCyan('╔══════════════════════════════════════════╗')}`);
-  console.log(`  ${c.boldCyan('║')}      ${c.boldWhite('occier')} ${c.gray('v2 — AI Dev Environment Manager')}     ${c.boldCyan('║')}`);
-  console.log(`  ${c.boldCyan('╚══════════════════════════════════════════╝')}`);
-  console.log(``);
-
-  const lines = [
-    `  ${c.boldCyan('Dashboard')}`,
-    ``,
-    `    ${env.networkConfigured ? c.green('●') : c.yellow('○')} Network    ${env.isWSL ? `WSL ${env.wslNetworkMode || 'unknown'}` : 'direct'}  |  ${Object.keys(env.proxy).filter(k => env.proxy[k]).length > 0 ? 'proxy set' : 'no proxy'}`,
-    `    ${(env.claude.installed || env.opencode.installed) ? c.green('●') : c.gray('○')} Prov.      ${env.claude.installed ? 'claude' : ''} ${env.opencode.installed ? '/ opencode' : ''}`,
-    `    ${env.gh.loggedIn ? c.green('●') : c.gray('○')} GitHub     ${env.gh.loggedIn ? c.green('logged in') : c.gray('not logged in')}`,
-    ``,
-    `  ── ${c.boldWhite('Quick Actions')} ──`,
-  ];
-  for (const l of lines) console.log(l);
-
-  const { select, Separator } = await import('@inquirer/prompts');
-  const action = await select({
-    message: '',
-    choices: [
-      { name: '  Init / Setup Wizard', value: 'init' },
-      { name: '  Doctor (system check)', value: 'doctor' },
-      { name: '  Network Config', value: 'network' },
-      { name: '  Provider Config', value: 'provider' },
-      { name: '  Launch Claude Code', value: 'launch' },
-      new Separator(),
-      { name: '  Quit', value: '_quit' },
-    ],
-  });
-
-  console.log(``);
-  if (action === 'init') { const { runInit } = await import('./commands/v2/init.mjs'); await runInit(); }
-  else if (action === 'doctor') { const { runDoctor } = await import('./commands/v2/doctor.mjs'); await runDoctor(); }
-  else if (action === 'network') { const { showNetworkStatus } = await import('./commands/v2/network.mjs'); await showNetworkStatus(); }
-  else if (action === 'provider') { const { providerList } = await import('./commands/v2/provider.mjs'); await providerList(); }
-  else if (action === 'launch') { const { runLaunch } = await import('./commands/v2/launch.mjs'); await runLaunch([]); }
-  else process.exit(0);
+  const { startDashboard } = await import('./tui/v2/framework.mjs');
+  startDashboard(0);
 }
 
 async function dispatchMirror(args) {
