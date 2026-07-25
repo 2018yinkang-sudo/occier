@@ -5,7 +5,6 @@ const term = termkit.terminal;
 const TABS = ["Dashboard", "Network", "Vault", "Providers", "Tools", "Projects"];
 
 let _currentTab = 0;
-let _renderFn = null;
 
 export function startDashboard(initialTab = 0) {
   _currentTab = initialTab;
@@ -24,7 +23,7 @@ export function startDashboard(initialTab = 0) {
     } else if (key === "RIGHT" || key === "TAB") {
       switchTab((_currentTab + 1) % TABS.length);
     } else if (key === "f5") {
-      if (_renderFn) _renderFn();
+      switchTab(_currentTab);
     }
   });
 
@@ -41,10 +40,6 @@ export function exitDashboard() {
   process.exit(0);
 }
 
-export function setRender(fn) {
-  _renderFn = fn;
-}
-
 export function switchTab(index) {
   if (index < 0 || index >= TABS.length) return;
   _currentTab = index;
@@ -59,8 +54,8 @@ function renderScreen() {
   term.clear();
   drawHeader();
   drawTabBar();
-  drawContent();
   drawFooter();
+  loadPanel();
 }
 
 function drawHeader() {
@@ -85,8 +80,7 @@ function drawTabBar() {
     if (i < TABS.length - 1) term.white(" │");
   }
   term.styleReset();
-  term("\n");
-  term("\n");
+  term("\n\n");
 }
 
 function drawFooter() {
@@ -99,12 +93,8 @@ function drawFooter() {
   term.styleReset();
 }
 
-function drawContent() {
+function loadPanel() {
   const tab = TABS[_currentTab];
-  renderPanel(tab);
-}
-
-async function renderPanel(tab) {
   const moduleMap = {
     Dashboard: "./dashboard.mjs",
     Network: "./network.mjs",
@@ -119,14 +109,15 @@ async function renderPanel(tab) {
     return;
   }
 
-  try {
-    const mod = await import(modPath);
+  const refresh = () => switchTab(_currentTab);
+
+  import(modPath).then((mod) => {
     if (mod && typeof mod.renderPanel === "function") {
-      await mod.renderPanel(term, setRender);
+      return mod.renderPanel(term, refresh);
     } else {
       term.red("  Panel module missing renderPanel export\n");
     }
-  } catch (err) {
+  }).catch((err) => {
     term.red(`  Error loading panel: ${err.message}\n`);
-  }
+  });
 }

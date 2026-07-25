@@ -135,8 +135,7 @@ function dispatchCommand(cmd, args) {
   if (subEntry && subEntry.modulePath) {
     return async () => {
       const m = await import(subEntry.modulePath);
-      const passArgs = subEntry.args ? args.slice(1) : args.slice(1);
-      await m[subEntry.exportName](...passArgs);
+      await m[subEntry.exportName](args.slice(1));
     };
   }
 
@@ -145,17 +144,6 @@ function dispatchCommand(cmd, args) {
       const m = await import(entry.modulePath);
       await m[entry.exportName](args);
     };
-  }
-
-  if (entry.subCommands) {
-    const defaultSub = Object.keys(entry.subCommands)[0];
-    const defaultEntry = entry.subCommands[defaultSub];
-    if (defaultEntry) {
-      return async () => {
-        const m = await import(defaultEntry.modulePath);
-        await m[defaultEntry.exportName](args);
-      };
-    }
   }
 
   return null;
@@ -199,6 +187,13 @@ export async function route(args) {
   const handler = dispatchCommand(cmd, args.slice(1));
   if (handler) {
     await handler();
+    return;
+  }
+
+  const entry = lookupCommand(cmd);
+  if (entry && entry.subCommands) {
+    const subs = Object.keys(entry.subCommands).join('|');
+    console.log(`  ${c.yellow('Usage:')} occier ${cmd} ${subs}\n`);
     return;
   }
 

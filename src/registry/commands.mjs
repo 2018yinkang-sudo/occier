@@ -24,6 +24,7 @@ const COMMANDS = [
     name: "network",
     help: "Network configuration & testing",
     modulePath: "../commands/v2/network.mjs",
+    exportName: "showNetworkStatus",
     subCommands: {
       configure: { modulePath: "../commands/v2/network.mjs", exportName: "configureNetwork", help: "Configure proxy & mirrors" },
       test: { modulePath: "../commands/v2/network.mjs", exportName: "testNetwork", help: "Test connectivity & latency" },
@@ -35,6 +36,7 @@ const COMMANDS = [
     name: "vault",
     help: "Manage stored credentials",
     modulePath: "../commands/v2/vault.mjs",
+    exportName: "vaultList",
     subCommands: {
       list: { modulePath: "../commands/v2/vault.mjs", exportName: "vaultList", help: "List stored credentials" },
       set: { modulePath: "../commands/v2/vault.mjs", exportName: "vaultSet", help: "Store a credential" },
@@ -45,6 +47,7 @@ const COMMANDS = [
     name: "provider",
     help: "Configure API providers",
     modulePath: "../commands/v2/provider.mjs",
+    exportName: "providerList",
     subCommands: {
       list: { modulePath: "../commands/v2/provider.mjs", exportName: "providerList", help: "List available providers" },
       connect: { modulePath: "../commands/v2/provider.mjs", exportName: "providerConnect", help: "Configure a provider" },
@@ -73,6 +76,7 @@ const COMMANDS = [
     name: "group",
     help: "Select model groups",
     modulePath: "../commands/v2/group.mjs",
+    exportName: "groupList",
     subCommands: {
       list: { modulePath: "../commands/v2/group.mjs", exportName: "groupList", help: "List model groups" },
       use: { modulePath: "../commands/v2/group.mjs", exportName: "groupUse", help: "Select a model group" },
@@ -82,6 +86,7 @@ const COMMANDS = [
     name: "model",
     help: "List/probe available models",
     modulePath: "../commands/v2/group.mjs",
+    exportName: "modelList",
     subCommands: {
       list: { modulePath: "../commands/v2/group.mjs", exportName: "modelList", help: "List available models" },
       probe: { modulePath: "../commands/v2/group.mjs", exportName: "modelProbe", help: "Test model availability" },
@@ -103,6 +108,7 @@ const COMMANDS = [
     name: "config",
     help: "Configuration management",
     modulePath: "../commands/setup-wizard.mjs",
+    exportName: "runSetup",
     subCommands: {
       "set-key": { modulePath: "../commands/setup-wizard.mjs", exportName: "setKey", help: "Update a specific API key" },
       reset: { modulePath: "../commands/setup-wizard.mjs", exportName: "resetConfig", help: "Reset all configuration" },
