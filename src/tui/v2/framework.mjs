@@ -31,6 +31,7 @@ const MOD_MAP = {
 
 let _currentTab = 0;
 let _renderGen = 0;
+let _switchTimer = null;
 
 // ── Public API ──
 
@@ -78,7 +79,16 @@ export function exitDashboard() {
 export function switchTab(index) {
   if (index < 0 || index >= TABS.length) return;
   _currentTab = index;
-  renderScreen();
+  // Debounce: rapid key presses (e.g. holding arrow keys) should collapse into
+  // a single render so the screen does not tear or flash intermediate states.
+  if (_switchTimer) {
+    clearTimeout(_switchTimer);
+    _switchTimer = null;
+  }
+  _switchTimer = setTimeout(() => {
+    _switchTimer = null;
+    renderScreen();
+  }, 25);
 }
 
 export function getCurrentTab() {
@@ -87,8 +97,8 @@ export function getCurrentTab() {
 
 // ── Internal rendering ──
 
-function renderScreen() {
-  _renderGen++;
+async function renderScreen() {
+  const gen = ++_renderGen;
 
   // term.clear() on the alternate screen (fullscreen) is a buffer swap and
   // does not flicker — it simply replaces the visible content in one go.
@@ -97,8 +107,18 @@ function renderScreen() {
   drawHeader();
   drawTabBar();
   term("\n");
-  drawContent();
+  await drawContent();
+
+  // If the user has switched tabs since we started, do not paint a stale footer.
+  if (gen !== _renderGen) return;
+
   drawFooter();
+}
+
+function drawContent() {
+  const modPath = MOD_MAP[TABS[_currentTab].id];
+  if (!modPath) return Promise.resolve();
+  return loadPanel(modPath);
 }
 
 function drawHeader() {
@@ -157,11 +177,6 @@ function drawFooter() {
   const pad = Math.max(0, w - text.length);
   if (pad > 0) term.white(" ".repeat(pad));
   term.styleReset();
-}
-
-function drawContent() {
-  const modPath = MOD_MAP[TABS[_currentTab].id];
-  if (modPath) loadPanel(modPath);
 }
 
 async function loadPanel(modPath) {

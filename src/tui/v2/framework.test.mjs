@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -56,29 +56,45 @@ beforeAll(async () => {
   mod = await import("./framework.mjs");
 });
 
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+async function flushSwitch() {
+  // Allow the 25ms debounce timer and the async render pipeline to complete.
+  await vi.advanceTimersByTimeAsync(50);
+}
+
 describe("TUI framework rendering", () => {
-  it("switchTab calls renderScreen which uses term.clear", () => {
+  it("switchTab calls renderScreen which uses term.clear", async () => {
     const clearFn = vi.fn();
     const origClear = term.clear;
     term.clear = clearFn;
     calls.length = 0;
     mod.switchTab(0);
+    await flushSwitch();
     expect(clearFn).toHaveBeenCalledOnce();
     term.clear = origClear;
   });
 
-  it("header displays the dynamic version from package.json", () => {
+  it("header displays the dynamic version from package.json", async () => {
     calls.length = 0;
     mod.switchTab(0);
+    await flushSwitch();
     const verCalls = calls.filter((c) => c.prop === "white" && c.args[0]?.startsWith?.("v"));
     expect(verCalls.length).toBeGreaterThanOrEqual(1);
     const verText = verCalls[0].args[0];
     expect(verText).toContain(pkg.version);
   });
 
-  it("unselected tab labels use brightWhite (not gray)", () => {
+  it("unselected tab labels use brightWhite (not gray)", async () => {
     calls.length = 0;
     mod.switchTab(0);
+    await flushSwitch();
     const grayCalls = calls.filter((c) => c.prop === "gray");
     for (const gc of grayCalls) {
       const text = gc.args[0]?.trim();
@@ -90,9 +106,10 @@ describe("TUI framework rendering", () => {
     }
   });
 
-  it("footer uses bright colors on bgGray", () => {
+  it("footer uses bright colors on bgGray", async () => {
     calls.length = 0;
     mod.switchTab(0);
+    await flushSwitch();
     const brightCalls = calls.filter((c) => c.prop === "brightWhite" || c.prop === "brightCyan");
     expect(brightCalls.length).toBeGreaterThanOrEqual(2);
   });
