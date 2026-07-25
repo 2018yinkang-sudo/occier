@@ -34,7 +34,7 @@ const HELP = `
 `;
 
 async function displayDashboard() {
-  const { startDashboard } = await import('./tui/v2/framework.mjs');
+  const { startDashboard } = await import('./tui/v3/framework.mjs');
   startDashboard(0);
 }
 
