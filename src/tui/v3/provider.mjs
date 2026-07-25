@@ -82,11 +82,6 @@ export async function renderPanel(term, state, budget) {
     if (emitLine({ text: "", fg: "white" })) return;
   }
 
-  emitLine(
-    { text: `${pad}Run `, fg: "gray" },
-    { text: "occier provider connect", fg: "cyan" },
-    { text: " to configure", fg: "gray" },
-  );
   term.styleReset();
 }
 

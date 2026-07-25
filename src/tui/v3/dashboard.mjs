@@ -107,11 +107,6 @@ export async function renderPanel(term, state, budget) {
   const configured = providers.filter((p) => p.configured);
   if (configured.length === 0) {
     if (emitLine({ text: `${pad}No providers configured`, fg: "gray" })) return;
-    if (emitLine(
-      { text: `${pad}Run `, fg: "gray" },
-      { text: "occier provider connect", fg: "cyan" },
-      { text: " to add one", fg: "gray" },
-    )) return;
   } else {
     for (const p of configured) {
       if (!budget.shouldShow(p.label)) continue;

@@ -82,19 +82,6 @@ export async function renderPanel(term, state, budget) {
 
   if (emitLine({ text: "", fg: "white" })) return;
 
-  if (emitLine({ text: `${pad}Commands:`, fg: "brightWhite" })) return;
-  if (emitLine(
-    { text: `${pad}  `, fg: "white" },
-    { text: "occier tool install claude", fg: "cyan" },
-  )) return;
-  if (emitLine(
-    { text: `${pad}  `, fg: "white" },
-    { text: "occier tool install opencode", fg: "cyan" },
-  )) return;
-  emitLine(
-    { text: `${pad}  `, fg: "white" },
-    { text: "occier tool update claude", fg: "cyan" },
-  );
   term.styleReset();
 }
 
