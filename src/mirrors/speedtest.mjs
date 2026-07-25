@@ -1,5 +1,5 @@
 import { runString } from "../exec/runner.mjs";
-import { getMirror, allMirrors, enableMirror, disableMirror } from "./registry.mjs";
+import { getMirror, allMirrors, mirrorsByScope, enableMirror, disableMirror } from "./registry.mjs";
 
 export async function testMirrorLatency(mirrorId) {
   const mirror = getMirror(mirrorId);
@@ -21,15 +21,14 @@ export async function testMirrorLatency(mirrorId) {
 
 export async function testAllMirrors() {
   const results = [];
-  for (const m of allMirrors()) {
+  for (const m of await allMirrors()) {
     results.push(await testMirrorLatency(m.id));
   }
   return results;
 }
 
 export async function testMirrorsByScope(scope) {
-  const { mirrorsByScope } = await import("./registry.mjs");
-  const mirrors = mirrorsByScope(scope);
+  const mirrors = await mirrorsByScope(scope);
   const results = [];
   for (const m of mirrors) {
     results.push(await testMirrorLatency(m.id));
@@ -38,8 +37,7 @@ export async function testMirrorsByScope(scope) {
 }
 
 export async function autoSwitchMirror(scope, thresholdMs = 500) {
-  const { mirrorsByScope, enableMirror: enable, disableMirror: disable } = await import("./registry.mjs");
-  const mirrors = mirrorsByScope(scope);
+  const mirrors = await mirrorsByScope(scope);
   const settled = await Promise.allSettled(mirrors.map((m) => testMirrorLatency(m.id)));
   const results = settled
     .filter((s) => s.status === "fulfilled")
@@ -52,25 +50,16 @@ export async function autoSwitchMirror(scope, thresholdMs = 500) {
   }
 
   const bestId = best[0].mirrorId;
-  for (const m of mirrors) {
-    if (m.id === bestId) {
-      enable(m.id);
-    } else {
-      disable(m.id);
-    }
-  }
+  await Promise.all(mirrors.map((m) =>
+    m.id === bestId ? enableMirror(m.id) : disableMirror(m.id),
+  ));
   return { switched: true, best: bestId, latency: best[0].ms, results };
 }
 
 export async function restoreOfficialMirror(scope) {
-  const { mirrorsByScope } = await import("./registry.mjs");
-  const mirrors = mirrorsByScope(scope);
-  for (const m of mirrors) {
-    if (m.official) {
-      enableMirror(m.id);
-    } else {
-      disableMirror(m.id);
-    }
-  }
+  const mirrors = await mirrorsByScope(scope);
+  await Promise.all(mirrors.map((m) =>
+    m.official ? enableMirror(m.id) : disableMirror(m.id),
+  ));
   return true;
 }

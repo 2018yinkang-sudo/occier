@@ -4,8 +4,9 @@ import {
 } from "./registry.mjs";
 
 describe("mirror registry", () => {
-  it("has built-in mirrors", () => {
-    expect(allMirrors().length).toBeGreaterThan(0);
+  it("has built-in mirrors", async () => {
+    const mirrors = await allMirrors();
+    expect(mirrors.length).toBeGreaterThan(0);
   });
 
   it("has npm-official mirror", () => {
@@ -15,8 +16,8 @@ describe("mirror registry", () => {
     expect(m.baseUrl).toBe("https://registry.npmjs.org");
   });
 
-  it("has cn mirrors", () => {
-    const cn = allMirrors().filter((m) => m.region === "cn");
+  it("has cn mirrors", async () => {
+    const cn = (await allMirrors()).filter((m) => m.region === "cn");
     expect(cn.length).toBeGreaterThan(0);
   });
 
@@ -24,17 +25,19 @@ describe("mirror registry", () => {
     expect(getMirrorSafe("nonexistent")).toBeNull();
   });
 
-  it("mirrorsByScope filters by scope", () => {
-    const npm = mirrorsByScope("npm");
+  it("mirrorsByScope filters by scope", async () => {
+    const npm = await mirrorsByScope("npm");
     expect(npm.every((m) => m.scope === "npm")).toBe(true);
   });
 
-  it("enableMirror and disableMirror work", () => {
-    expect(enableMirror("npm-aliyun")).toBe(true);
+  it("enableMirror and disableMirror work", async () => {
+    const enResult = await enableMirror("npm-aliyun");
+    expect(enResult).toBe(true);
     const m = getMirror("npm-aliyun");
     expect(m.enabled).toBe(true);
 
-    expect(disableMirror("npm-aliyun")).toBe(true);
+    const disResult = await disableMirror("npm-aliyun");
+    expect(disResult).toBe(true);
     const m2 = getMirror("npm-aliyun");
     expect(m2.enabled).toBe(false);
   });

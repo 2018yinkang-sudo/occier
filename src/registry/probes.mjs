@@ -1,8 +1,8 @@
-import { getProvider } from "../registry/providers.mjs";
+import { getProvider, allProviders } from "../registry/providers.mjs";
 import { createStore } from "../store/credential-store.mjs";
+import { ProbeCache } from "./probe-cache.mjs";
 
-const CACHE_TTL = 5 * 60 * 1000;
-const _cache = new Map();
+const probeCache = new ProbeCache();
 
 export const ModelStatus = {
   AVAILABLE: "available",
@@ -16,23 +16,19 @@ export const ModelStatus = {
 
 export function isCacheValid(testedAt) {
   if (!testedAt) return false;
-  return Date.now() - new Date(testedAt).getTime() < CACHE_TTL;
+  return Date.now() - new Date(testedAt).getTime() < 5 * 60 * 1000;
 }
 
 export async function probeModel(provider, apiKey, modelId) {
   const start = Date.now();
   const cacheKey = `${provider.id}:${modelId}`;
 
-  if (_cache.has(cacheKey)) {
-    const cached = _cache.get(cacheKey);
-    if (isCacheValid(cached.testedAt)) {
-      return cached;
-    }
-  }
+  const cached = probeCache.get(cacheKey);
+  if (cached) return { ...cached, ms: Date.now() - start };
 
   if (!provider.healthUrl) {
     const result = { status: ModelStatus.UNKNOWN, ms: 0, detail: "No health endpoint", testedAt: new Date().toISOString() };
-    _cache.set(cacheKey, result);
+    probeCache.set(cacheKey, result);
     return result;
   }
 
@@ -103,7 +99,7 @@ export async function probeModel(provider, apiKey, modelId) {
   }
 
   const result = { status, ms, detail, testedAt: new Date().toISOString() };
-  _cache.set(cacheKey, result);
+  probeCache.set(cacheKey, result);
   return result;
 }
 
@@ -134,7 +130,6 @@ export async function probeProviderAll(providerId) {
 }
 
 export async function probeAllConfiguredProviders() {
-  const { allProviders } = await import("../registry/providers.mjs");
   const store = createStore();
   const entries = await store.list();
   const results = [];
@@ -151,5 +146,5 @@ export async function probeAllConfiguredProviders() {
 }
 
 export function clearProbeCache() {
-  _cache.clear();
+  probeCache.clear();
 }

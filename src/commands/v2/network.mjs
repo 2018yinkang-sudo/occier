@@ -55,7 +55,7 @@ export async function showNetworkStatus() {
 
   console.log(``);
   console.log(`  ${c.boldCyan('Mirrors')}`);
-  for (const m of allMirrors()) {
+  for (const m of await allMirrors()) {
     const status = m.enabled ? c.green('enabled') : c.gray('disabled');
     console.log(`    ${m.id.padEnd(20)} ${status} ${c.gray(m.baseUrl)}`);
   }
@@ -203,7 +203,7 @@ export async function showMirrors() {
   console.log(`  ${c.boldWhite('Mirror Registry')}`);
   console.log(``);
 
-  for (const m of allMirrors()) {
+  for (const m of await allMirrors()) {
     const status = m.enabled ? c.green('●') : c.gray('○');
     const official = m.official ? c.gray('(official)') : c.yellow('(mirror)');
     console.log(`  ${status} ${m.id.padEnd(20)} ${official} ${c.gray(m.baseUrl)}`);

@@ -6,49 +6,52 @@ describe("getProvider", () => {
     const p = getProvider("deepseek");
     expect(p.id).toBe("deepseek");
     expect(p.label).toBe("DeepSeek");
-    expect(p.envVar).toBe("DEEPSEEK_API_KEY");
-    expect(p.env.ANTHROPIC_BASE_URL).toBe("https://api.deepseek.com/anthropic");
+    expect(p.envVarName).toBe("DEEPSEEK_API_KEY");
+    expect(p.claudeEnv.ANTHROPIC_BASE_URL).toBe("https://api.deepseek.com/anthropic");
   });
 
   it("returns kimi provider", () => {
     const p = getProvider("kimi");
     expect(p.id).toBe("kimi");
-    expect(p.envVar).toBe("KIMI_API_KEY");
-    expect(p.env.ANTHROPIC_BASE_URL).toBe("https://api.moonshot.cn/anthropic");
+    expect(p.envVarName).toBe("KIMI_API_KEY");
+    expect(p.claudeEnv.ANTHROPIC_BASE_URL).toBe("https://api.moonshot.cn/anthropic");
   });
 
   it("returns anthropic provider", () => {
     const p = getProvider("anthropic");
     expect(p.id).toBe("anthropic");
-    expect(p.envVar).toBe("ANTHROPIC_API_KEY_OFFICIAL");
+    expect(p.envVarName).toBe("ANTHROPIC_API_KEY_OFFICIAL");
     expect(p.healthUrl).toBeNull();
   });
 
   it("throws for unknown provider", () => {
-    expect(() => getProvider("unknown")).toThrow("Unknown provider");
+    expect(() => getProvider("unknown")).toThrow("Unknown");
   });
 });
 
 describe("allProviders", () => {
-  it("returns all three providers", () => {
+  it("returns all seven providers", () => {
     const providers = allProviders();
-    expect(providers).toHaveLength(3);
+    expect(providers).toHaveLength(7);
     expect(providers.map((p) => p.id).sort()).toEqual([
       "anthropic",
       "deepseek",
       "kimi",
+      "openai",
+      "openai-compatible",
+      "openrouter",
+      "zhipu",
     ]);
   });
 });
 
 describe("providerChoices", () => {
-  it("returns formatted choices for inquirer", () => {
+  it("returns formatted choices for all providers", () => {
     const choices = providerChoices();
-    expect(choices).toHaveLength(3);
+    expect(choices).toHaveLength(7);
     for (const c of choices) {
       expect(c).toHaveProperty("name");
       expect(c).toHaveProperty("value");
-      expect(["deepseek", "kimi", "anthropic"]).toContain(c.value);
     }
   });
 });

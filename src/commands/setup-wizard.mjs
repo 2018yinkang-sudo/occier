@@ -1,6 +1,6 @@
 import { checkbox, password, select, confirm } from '@inquirer/prompts';
 import { readProvidersEnv, writeProvidersEnv, readConfig, writeConfig, providersEnvExists } from '../config-io.mjs';
-import { allProviders, getProvider } from '../providers/registry.mjs';
+import { allProviders, getProvider } from '../registry/providers.mjs';
 import { c, banner } from '../tui.mjs';
 
 export async function runSetup() {
@@ -54,7 +54,7 @@ export async function runSetup() {
         return true;
       },
     });
-    keys[p.envVar] = key;
+    keys[p.envVarName] = key;
     console.log('');
   }
 
@@ -77,7 +77,7 @@ export async function setKey() {
   const { id } = await select({
     message: 'Select provider:',
     choices: allProviders().map(p => ({
-      name: `${p.label.padEnd(14)} (current: ${entries[p.envVar] ? '****configured****' : 'not set'})`,
+      name: `${p.label.padEnd(14)} (current: ${entries[p.envVarName] ? '****configured****' : 'not set'})`,
       value: p.id,
     })),
   });
@@ -99,7 +99,7 @@ export async function setKey() {
     },
   });
 
-  entries[p.envVar] = key;
+  entries[p.envVarName] = key;
   await writeProvidersEnv(entries);
   console.log(`\n  ${c.green('✓')} ${p.label} API key updated.\n`);
 }
@@ -135,9 +135,9 @@ export async function showConfig() {
   console.log('');
 
   for (const p of allProviders()) {
-    const key = entries[p.envVar];
+    const key = entries[p.envVarName];
     const hasKey = key && key.length > 4 && !key.includes('replace_with_your');
-    console.log(`    ${hasKey ? c.green('●') : c.gray('○')} ${p.label.padEnd(12)} ${p.envVar}=${hasKey ? '****' : c.gray('<not set>')}`);
+    console.log(`    ${hasKey ? c.green('●') : c.gray('○')} ${p.label.padEnd(12)} ${p.envVarName}=${hasKey ? '****' : c.gray('<not set>')}`);
   }
   console.log('');
 }
