@@ -41,7 +41,7 @@ export function startDashboard(initialTab = 0) {
   // terminal theme. This is a one-time erase — subsequent renders overwrite
   // rows without clearing.
   term.bgBlack();
-  term.eraseDisplay();
+  try { term.eraseDisplay(); } catch { /* non-TTY: erase not available, skip */ }
   term.fullscreen(true);
   term.hideCursor();
   term.grabInput(true);
@@ -90,27 +90,35 @@ export function getCurrentTab() {
 function renderScreen() {
   _renderGen++;
 
+  const w = typeof term.width === "number" && isFinite(term.width) ? term.width : 80;
+  const h = typeof term.height === "number" && isFinite(term.height) ? term.height : 24;
+
   // Header — row 1, full-width bgBrightCyan
   term.moveTo(1, 1);
-  drawHeader();
+  drawHeader(w);
 
   // Tab bar — row 2, full-width bgGray
   term.moveTo(1, 2);
-  drawTabBar();
+  drawTabBar(w);
 
   // Spacer row — row 3, bgBlack fills the default background for content
   term.moveTo(1, 3);
   term.bgBlack();
-  term.white(" ".repeat(term.width));
+  term.white(" ".repeat(w));
+
+  // Clear old content (rows 4+) NOW so stale panel text does not linger
+  // while the new panel is loading asynchronously (ghosting fix).
+  term.moveTo(1, 4);
+  try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
 
   // Content — rows 4+, async
   drawContent();
 
   // Footer — last row
-  drawFooter();
+  drawFooter(w, h);
 }
 
-function drawHeader() {
+function drawHeader(w) {
   const tab = TABS[_currentTab];
   term.styleReset();
   term.bgBrightCyan();
@@ -120,15 +128,21 @@ function drawHeader() {
   term.bold();
   term.white(tab.label);
   const text = `  occier  v${VERSION} —  ${tab.label}`;
-  const pad = Math.max(0, term.width - text.length);
+  const pad = Math.max(0, w - text.length);
   if (pad > 0) term.white(" ".repeat(pad));
+  term.styleReset();
 }
 
-function drawTabBar() {
+function drawTabBar(w) {
   term.styleReset();
   term.bgGray();
+
+  // On narrow terminals (<73 cols) reduce inter-tab gap to save space.
+  const natural = TABS.reduce((acc, t) => acc + 2 + t.label.length + 2 + 1, 0);
+  const gap = w < natural ? " " : "  ";
+
   for (let i = 0; i < TABS.length; i++) {
-    term.white("  ");
+    term.white(gap);
     if (i === _currentTab) {
       term.bgBrightWhite();
       term.black(` ${TABS[i].label} `);
@@ -138,21 +152,22 @@ function drawTabBar() {
     }
     term.white(" ");
   }
+
   // Fill rest of the row with bgGray
-  const consumed = TABS.reduce((acc, t, _i) => acc + 2 + t.label.length + 2 + 1, 0);
-  const pad = Math.max(0, term.width - consumed);
+  const consumed = TABS.reduce((acc, t) => acc + (w < natural ? 1 : 2) + 2 + t.label.length + 2 + 1, 0);
+  const pad = Math.max(0, w - consumed);
   if (pad > 0) term.white(" ".repeat(pad));
 }
 
-function drawFooter() {
-  term.moveTo(1, term.height);
+function drawFooter(w, h) {
+  term.moveTo(1, h);
   term.styleReset();
   term.bgGray();
   term.brightCyan("  ←→ / Tab:Switch  ");
   term.brightWhite("F5:Refresh  ");
   term.brightWhite("q/Esc:Quit  ");
   const text = "  ←→ / Tab:Switch  F5:Refresh  q/Esc:Quit  ";
-  const pad = Math.max(0, term.width - text.length);
+  const pad = Math.max(0, w - text.length);
   if (pad > 0) term.white(" ".repeat(pad));
   term.styleReset();
 }
@@ -171,7 +186,7 @@ async function loadPanel(modPath) {
       await mod.renderPanel(term);
       // Clear any leftover lines from a previous larger panel.
       if (gen === _renderGen) {
-        term.eraseDisplayAfter();
+        try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
       }
       return;
     }
