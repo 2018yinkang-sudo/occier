@@ -4,8 +4,7 @@
 export function createState() {
   return {
     currentTab: 0,
-    mode: "focus", // "focus" | "input" (Phase 2)
-                   // will become "focus" | "input" | "search" | "log" in Phase 4
+    mode: "focus", // "focus" | "input" | "search" | "log"
     scrollOffsets: {}, // tabId -> integer
     cursor: {},        // tabId -> itemId
     status: null,      // { message, kind, ts }  (kind: info|success|error)

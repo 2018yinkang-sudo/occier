@@ -654,6 +654,9 @@ function currentTabId() {
 
 async function refreshTab() {
   _state.forceRefresh = true;
-  await renderScreen();
-  _state.forceRefresh = false;
+  try {
+    await renderScreen();
+  } finally {
+    _state.forceRefresh = false;
+  }
 }

@@ -24,7 +24,6 @@ export const searchMode = {
         ctx.ensureCursorVisible();
       } else if (q) {
         ctx.showStatus("No match", "info");
-        ctx.renderScreen();
       }
       ctx.setMode("focus");
       return;

@@ -156,3 +156,107 @@ describe("TUI v3 framework", () => {
     expect(typeof mod.getCurrentTab).toBe("function");
   });
 });
+
+function makeMockCtx() {
+  const state = { mode: "focus", cursor: {}, search: null };
+  const calls = [];
+  return {
+    state,
+    calls,
+    currentTabId() { return "test-tab"; },
+    setMode(mode) { state.mode = mode; calls.push(["setMode", mode]); },
+    switchTab() {},
+    renderScreen() { calls.push(["renderScreen"]); },
+    ensureCursorVisible() { calls.push(["ensureCursorVisible"]); },
+    getSelectableItems() {
+      return [
+        { id: "claude", label: "Claude Code" },
+        { id: "opencode", label: "OpenCode" },
+      ];
+    },
+    showStatus(msg, kind) { calls.push(["showStatus", msg, kind]); },
+  };
+}
+
+describe("TUI v3 modes — search", () => {
+  it("onEnter creates search state", async () => {
+    const { searchMode } = await import("./modes/search.mjs");
+    const ctx = makeMockCtx();
+    searchMode.onEnter(ctx);
+    expect(ctx.state.search).toEqual({ query: "" });
+    expect(ctx.calls).toContainEqual(["renderScreen"]);
+  });
+
+  it("typing builds query", async () => {
+    const { searchMode } = await import("./modes/search.mjs");
+    const ctx = makeMockCtx();
+    searchMode.onEnter(ctx);
+    ctx.calls.length = 0;
+    searchMode.onKey(ctx, "o");
+    searchMode.onKey(ctx, "p");
+    searchMode.onKey(ctx, "e");
+    expect(ctx.state.search.query).toBe("ope");
+  });
+
+  it("BACKSPACE removes last char", async () => {
+    const { searchMode } = await import("./modes/search.mjs");
+    const ctx = makeMockCtx();
+    ctx.state.search = { query: "open" };
+    searchMode.onKey(ctx, "BACKSPACE");
+    expect(ctx.state.search.query).toBe("ope");
+  });
+
+  it("ESCAPE cancels and returns to focus", async () => {
+    const { searchMode } = await import("./modes/search.mjs");
+    const ctx = makeMockCtx();
+    ctx.state.search = { query: "open" };
+    searchMode.onKey(ctx, "ESCAPE");
+    expect(ctx.state.search).toBeNull();
+    expect(ctx.calls).toContainEqual(["setMode", "focus"]);
+  });
+
+  it("ENTER with match moves cursor", async () => {
+    const { searchMode } = await import("./modes/search.mjs");
+    const ctx = makeMockCtx();
+    ctx.state.search = { query: "open" };
+    searchMode.onKey(ctx, "ENTER");
+    expect(ctx.state.cursor["test-tab"]).toBe("opencode");
+    expect(ctx.state.search).toBeNull();
+    expect(ctx.calls).toContainEqual(["ensureCursorVisible"]);
+    expect(ctx.calls).toContainEqual(["setMode", "focus"]);
+  });
+
+  it("ENTER with no match shows status", async () => {
+    const { searchMode } = await import("./modes/search.mjs");
+    const ctx = makeMockCtx();
+    ctx.state.search = { query: "zzz" };
+    searchMode.onKey(ctx, "ENTER");
+    expect(ctx.state.search).toBeNull();
+    expect(ctx.calls.some((c) => c[0] === "showStatus" && c[1] === "No match")).toBe(true);
+  });
+});
+
+describe("TUI v3 modes — log", () => {
+  it("onEnter renders screen", async () => {
+    const { logMode } = await import("./modes/log.mjs");
+    const ctx = makeMockCtx();
+    logMode.onEnter(ctx);
+    expect(ctx.calls).toContainEqual(["renderScreen"]);
+  });
+
+  it("q closes log and returns to focus", async () => {
+    const { logMode } = await import("./modes/log.mjs");
+    const ctx = makeMockCtx();
+    ctx.state.mode = "log";
+    logMode.onKey(ctx, "q");
+    expect(ctx.calls).toContainEqual(["setMode", "focus"]);
+  });
+
+  it("Esc closes log and returns to focus", async () => {
+    const { logMode } = await import("./modes/log.mjs");
+    const ctx = makeMockCtx();
+    ctx.state.mode = "log";
+    logMode.onKey(ctx, "ESCAPE");
+    expect(ctx.calls).toContainEqual(["setMode", "focus"]);
+  });
+});
