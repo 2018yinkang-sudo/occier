@@ -175,7 +175,9 @@ export async function route(args) {
     return;
   }
 
-  if (cmd === 'deepseek' || cmd === 'kimi' || cmd === 'anthropic') {
+  // Direct launch by provider id (e.g. occier deepseek, occier openrouter)
+  const { getProviderSafe } = await import('./registry/providers.mjs');
+  if (getProviderSafe(cmd)) {
     const { directLaunch } = await import('./commands/launch.mjs');
     await directLaunch(cmd);
     return;

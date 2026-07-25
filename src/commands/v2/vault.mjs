@@ -81,3 +81,150 @@ export async function vaultRemove() {
     console.log(`\n  Aborted.\n`);
   }
 }
+
+export async function vaultGet(...args) {
+  const store = createStore();
+  const reveal = args.includes('--reveal') || args.includes('-r');
+
+  if (args.length === 0 || args[0].startsWith('-')) {
+    console.log(`\n  ${c.yellow('Usage:')} occier vault get <key> [--reveal]\n`);
+    return;
+  }
+
+  const key = args[0];
+  const data = await store.get(key);
+  if (!data) {
+    console.log(`\n  ${c.red('Error:')} Credential '${key}' not found.\n`);
+    return;
+  }
+
+  console.log(``);
+  divider();
+  console.log(`  ${c.boldWhite('Credential')}: ${key}`);
+  console.log(`  ${c.boldWhite('Type')}: ${data.type || 'api_key'}`);
+  console.log(`  ${c.boldWhite('Value')}: ${reveal ? data.value : maskValue(data.value)}`);
+  if (data.updatedAt) {
+    console.log(`  ${c.boldWhite('Updated')}: ${data.updatedAt}`);
+  }
+  if (reveal) {
+    console.log(`\n  ${c.yellow('Warning:')} Plaintext value shown above. Do not share or log this output.`);
+  }
+  console.log(``);
+  divider();
+  console.log(``);
+}
+
+export async function vaultPassphrase(...args) {
+  const subcmd = args[0];
+  if (!subcmd || subcmd === '--help' || subcmd === '-h') {
+    console.log(``);
+    console.log(`  ${c.boldWhite('occier vault passphrase')} — manage vault passphrase`);
+    console.log(``);
+    console.log(`  ${c.cyan('set')}    Set a passphrase to protect the vault`);
+    console.log(`  ${c.cyan('remove')} Remove passphrase (reverts to device-fingerprint key)`);
+    console.log(`  ${c.cyan('status')} Show whether vault is passphrase-protected`);
+    console.log(``);
+    return;
+  }
+
+  if (subcmd === 'status') {
+    const { readVaultMetaSync } = await import('../../store/credential-store.mjs');
+    const meta = readVaultMetaSync();
+    if (meta && meta.passphraseProtected) {
+      console.log(`\n  Vault is ${c.green('passphrase-protected')}.\n`);
+    } else if (meta) {
+      console.log(`\n  Vault is protected by ${c.yellow('device fingerprint')}.\n`);
+    } else {
+      console.log(`\n  Vault uses ${c.yellow('legacy encryption')} (will auto-migrate on next write).\n`);
+    }
+    return;
+  }
+
+  if (subcmd === 'set') {
+    const passphrase = await password({
+      message: 'New passphrase:',
+      mask: true,
+      validate: (v) => v.length >= 8 || 'Passphrase must be at least 8 characters',
+    });
+    await password({
+      message: 'Confirm passphrase:',
+      mask: true,
+      validate: (v) => v === passphrase || 'Passphrases do not match',
+    });
+
+    const { createStore, readVaultMetaSync, getDeviceFingerprint, deriveMasterKey } =
+      await import('../../store/credential-store.mjs');
+    const { randomBytes } = await import('crypto');
+
+    const oldMeta = readVaultMetaSync();
+    const oldPassphrase = oldMeta && oldMeta.passphraseProtected
+      ? await password({ message: 'Current passphrase:', mask: true })
+      : getDeviceFingerprint();
+
+    const oldStore = createStore("encrypted", { passphrase: oldPassphrase });
+    const data = await oldStore.readAll();
+
+    const newMeta = {
+      version: 2,
+      kdf: "pbkdf2-sha256",
+      iterations: 600000,
+      salt: randomBytes(32).toString("base64"),
+      passphraseProtected: true,
+    };
+    deriveMasterKey(passphrase, newMeta.salt, newMeta.iterations);
+
+    const { writeFile, mkdir } = await import('fs/promises');
+    const { join } = await import('path');
+    const { homedir } = await import('os');
+    const VAULT_DIR = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "occier");
+    const metaPath = join(VAULT_DIR, "vault.enc.meta");
+
+    await mkdir(VAULT_DIR, { recursive: true, mode: 0o700 });
+    await writeFile(metaPath, JSON.stringify(newMeta, null, 2), { mode: 0o600 });
+
+    const newStore = createStore("encrypted", { passphrase });
+    for (const [key, value] of Object.entries(data)) {
+      await newStore.set(key, value);
+    }
+
+    ok("Passphrase set. Use OCCIER_PASSPHRASE env var to avoid re-entering.\n");
+    return;
+  }
+
+  if (subcmd === 'remove') {
+    const { readVaultMetaSync, createStore } =
+      await import('../../store/credential-store.mjs');
+    const meta = readVaultMetaSync();
+    if (!meta || !meta.passphraseProtected) {
+      console.log(`\n  Vault is not passphrase-protected.\n`);
+      return;
+    }
+
+    const passphrase = await password({
+      message: 'Current passphrase:',
+      mask: true,
+    });
+
+    const oldStore = createStore("encrypted", { passphrase });
+    const data = await oldStore.readAll();
+
+    meta.passphraseProtected = false;
+    const { writeFile, mkdir } = await import('fs/promises');
+    const { join } = await import('path');
+    const { homedir } = await import('os');
+    const VAULT_DIR = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "occier");
+    const metaPath = join(VAULT_DIR, "vault.enc.meta");
+    await mkdir(VAULT_DIR, { recursive: true, mode: 0o700 });
+    await writeFile(metaPath, JSON.stringify(meta, null, 2), { mode: 0o600 });
+
+    const newStore = createStore("encrypted");
+    for (const [key, value] of Object.entries(data)) {
+      await newStore.set(key, value);
+    }
+
+    ok("Passphrase removed. Vault now uses device-fingerprint key.\n");
+    return;
+  }
+
+  console.log(`\n  ${c.yellow('Usage:')} occier vault passphrase <set|remove|status>\n`);
+}

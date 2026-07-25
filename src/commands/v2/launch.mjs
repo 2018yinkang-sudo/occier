@@ -86,11 +86,33 @@ export async function runLaunch(args) {
 
     launchClaude(envVars, filterLaunchArgs(args));
   } else if (tool === 'opencode') {
+    const store = createStore();
+
+    const { allProviders } = await import('../../registry/providers.mjs');
+    const envVars = { ...process.env };
+
+    if (providerId) {
+      const p = getProviderSafe(providerId);
+      if (p) {
+        const data = await store.get(p.envVarName.toLowerCase());
+        if (data?.value) {
+          envVars[p.envVarName] = data.value;
+        }
+      }
+    } else {
+      for (const p of allProviders()) {
+        const data = await store.get(p.envVarName.toLowerCase());
+        if (data?.value) {
+          envVars[p.envVarName] = data.value;
+        }
+      }
+    }
+
     console.log(`  ${c.cyan('Starting OpenCode...')}`);
     console.log(``);
 
     const { spawn } = await import('child_process');
-    const child = spawn('opencode', [], { stdio: 'inherit' });
+    const child = spawn('opencode', [], { stdio: 'inherit', env: envVars });
     child.on('error', (err) => {
       console.error(`\n  ${c.red('Error:')} ${err.message}\n`);
       process.exit(1);

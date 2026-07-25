@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, access } from 'fs/promises';
 import { constants } from 'fs';
 import { CC_CONFIG_DIR, ENV_FILE, CONFIG_FILE } from './paths.mjs';
+import { parseEnvContent } from './store/credential-store.mjs';
 
 const DEFAULT_CONFIG = {
   version: 1,
@@ -33,21 +34,14 @@ export async function writeConfig(config) {
 
 export async function readProvidersEnv() {
   const entries = {};
+
+  // Parse legacy env file using shared parser
   try {
     await access(ENV_FILE, constants.R_OK);
     const raw = await readFile(ENV_FILE, 'utf-8');
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIdx = trimmed.indexOf('=');
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      let val = trimmed.slice(eqIdx + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) ||
-          (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
-      }
-      entries[key] = val;
+    const parsed = parseEnvContent(raw);
+    for (const [key, entry] of Object.entries(parsed)) {
+      entries[key.toUpperCase()] = entry.value;
     }
   } catch {
     // no legacy env file — fall through to vault merge

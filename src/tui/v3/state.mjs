@@ -4,7 +4,7 @@
 export function createState() {
   return {
     currentTab: 0,
-    mode: "focus", // "focus" | "input" | "search" | "log"
+    mode: "focus", // "focus" | "input" | "search" | "log" | "select"
     scrollOffsets: {}, // tabId -> integer
     cursor: {},        // tabId -> itemId
     status: null,      // { message, kind, ts }  (kind: info|success|error)
@@ -13,6 +13,7 @@ export function createState() {
     actionInFlight: false,
     forceRefresh: false,
     search: null,      // { query } | null
+    select: null,      // { choices: [{label,value}], cursor, prompt, continue } | null
   };
 }
 

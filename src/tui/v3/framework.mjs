@@ -9,6 +9,7 @@ import { focusMode } from "./modes/focus.mjs";
 import { inputMode } from "./modes/input.mjs";
 import { searchMode } from "./modes/search.mjs";
 import { logMode } from "./modes/log.mjs";
+import { selectMode } from "./modes/select.mjs";
 
 const term = termkit.terminal;
 
@@ -48,6 +49,7 @@ const MODES = {
   input: inputMode,
   search: searchMode,
   log: logMode,
+  select: selectMode,
 };
 
 // ── Public API ──
@@ -155,6 +157,8 @@ function makeCtx() {
     invokeAction,
     submitInput,
     cancelInput,
+    confirmSelect,
+    cancelSelect,
     showStatus,
     refreshTab,
     renderScreen,
@@ -191,6 +195,8 @@ async function renderScreen() {
 
   if (_state.mode === "input" && _state.input?.spec) {
     drawInputModal();
+  } else if (_state.mode === "select" && _state.select) {
+    drawSelectModal();
   } else {
     term.hideCursor();
     if (_state.mode === "log") {
@@ -439,6 +445,67 @@ function drawInputModal() {
   term.hideCursor(false);
 }
 
+function drawSelectModal() {
+  const sel = _state.select;
+  if (!sel) return;
+  const { prompt, choices } = sel;
+  const cursor = sel.cursor || 0;
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  const h = Number.isFinite(term.height) ? term.height : 24;
+  const boxWidth = Math.min(58, w - 4);
+  const maxOptions = Math.min(choices.length, h - 8);
+  const boxHeight = 4 + maxOptions; // top border + prompt + options + hint + bottom border
+  const row = Math.floor((h - boxHeight) / 2);
+  const col = Math.floor((w - boxWidth) / 2) + 1;
+  const inner = boxWidth - 2;
+
+  // Top border with title
+  const titleText = prompt ? ` ${prompt} ` : " Select ";
+  const rightDash = Math.max(0, boxWidth - 2 - titleText.length);
+  term.moveTo(col, row);
+  term.styleReset();
+  term[theme.modal.border.fg](
+    theme.modal.border.tl + titleText + theme.modal.border.h.repeat(rightDash) + theme.modal.border.tr,
+  );
+
+  // Options
+  const startIdx = Math.max(0, cursor - Math.floor(maxOptions / 2));
+  const endIdx = Math.min(choices.length, startIdx + maxOptions);
+  for (let i = startIdx; i < endIdx; i++) {
+    const isFocused = i === cursor;
+    const label = choices[i].label;
+    const displayLabel = isFocused ? `▸ ${label}` : `  ${label}`;
+    term.moveTo(col, row + 1 + (i - startIdx));
+    term[theme.modal.border.fg](theme.modal.border.v);
+    term[theme.modal.body.bg]();
+    if (isFocused) {
+      term[theme.item.focused.bg]();
+      term[theme.item.focused.fg](displayLabel);
+    } else {
+      term[theme.modal.body.fg](displayLabel);
+    }
+    const pad = Math.max(0, inner - displayLabel.length);
+    if (pad > 0) term.black(" ".repeat(pad));
+    term[theme.modal.border.fg](theme.modal.border.v);
+  }
+
+  // Hint line
+  const hintRow = row + 1 + maxOptions;
+  term.moveTo(col, hintRow);
+  term[theme.modal.border.fg](theme.modal.border.v);
+  term[theme.modal.body.bg]();
+  term[theme.modal.hint.fg](" Enter select · Esc cancel ".padEnd(inner));
+  term[theme.modal.border.fg](theme.modal.border.v);
+
+  // Bottom border
+  term.moveTo(col, hintRow + 1);
+  term[theme.modal.border.fg](
+    theme.modal.border.bl + theme.modal.border.h.repeat(boxWidth - 2) + theme.modal.border.br,
+  );
+
+  term.hideCursor(false);
+}
+
 // ── Panel loading ──
 
 async function loadPanel(tabId, scrollOffset, gen) {
@@ -583,6 +650,11 @@ async function invokeAction(itemId) {
       setMode("input");
       return;
     }
+    if (result && typeof result === "object" && result.select) {
+      _state.select = { ...result.select, cursor: result.select.defaultCursor || 0, continue: result.continue };
+      setMode("select");
+      return;
+    }
 
     if (result) {
       const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
@@ -615,6 +687,11 @@ async function submitInput() {
       setMode("input");
       return;
     }
+    if (result && typeof result === "object" && result.select) {
+      _state.select = { ...result.select, cursor: result.select.defaultCursor || 0, continue: result.continue };
+      setMode("select");
+      return;
+    }
     if (result) {
       const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
       showStatus(result, kind);
@@ -628,6 +705,40 @@ async function submitInput() {
 function cancelInput() {
   _state.input = null;
   setMode("focus");
+}
+
+async function confirmSelect(value) {
+  const continueFn = _state.select.continue;
+  _state.select = null;
+  setMode("focus");
+  if (typeof continueFn !== "function") return;
+  try {
+    const result = await continueFn(value);
+    if (result && typeof result === "object" && result.input) {
+      _state.input = { spec: result.input, buffer: "", cursor: 0, error: null, continue: result.continue };
+      setMode("input");
+      return;
+    }
+    if (result && typeof result === "object" && result.select) {
+      _state.select = { ...result.select, cursor: result.select.defaultCursor || 0, continue: result.continue };
+      setMode("select");
+      return;
+    }
+    if (result) {
+      const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
+      showStatus(result, kind);
+      if (kind === "success") _cacheGen++;
+    }
+  } catch (err) {
+    showStatus(`Error: ${err.message}`, "error");
+  }
+}
+
+function cancelSelect() {
+  const continueFn = _state.select?.continue;
+  _state.select = null;
+  setMode("focus");
+  if (typeof continueFn === "function") continueFn(null).catch(() => {});
 }
 
 // ── Status ──

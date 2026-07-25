@@ -86,14 +86,29 @@ export async function handleAction(_term, itemId) {
           },
           async continue(value) {
             if (!value) return "Cancelled";
-            try {
-              const result = await setCredential(k, value);
-              _lastUpdate = 0;
-              if (result.ok) return `${k} added`;
-              return `Error: ${result.error}`;
-            } catch (err) {
-              return `Error: ${err.message}`;
-            }
+            return {
+              select: {
+                prompt: "Credential type",
+                choices: [
+                  { label: "1  API Key", value: "api_key" },
+                  { label: "2  GitHub Token", value: "github_token" },
+                  { label: "3  Proxy Password", value: "proxy_password" },
+                  { label: "4  Other", value: "other" },
+                ],
+                defaultCursor: 0,
+              },
+              async continue(type) {
+                if (!type) return "Cancelled";
+                try {
+                  const result = await setCredential(k, value, type);
+                  _lastUpdate = 0;
+                  if (result.ok) return `${k} added (${type})`;
+                  return `Error: ${result.error}`;
+                } catch (err) {
+                  return `Error: ${err.message}`;
+                }
+              },
+            };
           },
         };
       },

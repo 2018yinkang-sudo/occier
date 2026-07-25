@@ -1,9 +1,9 @@
-import { readFile, writeFile, mkdir, access, rename } from "fs/promises";
+import { readFile, writeFile, mkdir, access, rename, open } from "fs/promises";
 import { readFileSync } from "fs";
 import { constants } from "fs";
 import { randomBytes, createCipheriv, createDecipheriv, pbkdf2Sync } from "crypto";
 import { homedir, hostname } from "os";
-import { join } from "path";
+import { join, dirname, basename } from "path";
 
 const OC_DIR = join(
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
@@ -11,8 +11,54 @@ const OC_DIR = join(
 );
 const VAULT_FILE = join(OC_DIR, "vault.enc");
 
-// Serialize writes per file to avoid read-modify-write races between
-// concurrent vault operations within this process.
+const OLD_SALT = "occier-vault-salt";
+const OLD_ITERATIONS = 100000;
+const DEFAULT_ITERATIONS = 600000;
+const SALT_LEN = 32;
+const IV_LEN = 16;
+const TAG_LEN = 16;
+const KEY_LEN = 32;
+const KEY_DIGEST = "sha256";
+
+// ── file locking ──
+
+async function acquireLock(filePath) {
+  const lockPath = `${filePath}.lock`;
+  const MAX_AGE = 10_000;
+  await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
+
+  let fh;
+  try {
+    // O_CREAT|O_EXCL fails if file already exists
+    fh = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+  } catch {
+    // Lock exists — check if it's stale
+    let stale = false;
+    try {
+      const stat = await readFile(lockPath, "utf-8").catch(() => "");
+      const lines = stat.split("\n");
+      const ts = parseInt(lines[1], 10);
+      if (Number.isNaN(ts) || Date.now() - ts > MAX_AGE) stale = true;
+    } catch { stale = true; }
+    if (stale) {
+      await writeFile(lockPath, `${process.pid}\n${Date.now()}\n`, { mode: 0o600 }).catch(() => {});
+      fh = await open(lockPath, constants.O_WRONLY | constants.O_CREAT, 0o600).catch(() => null);
+    }
+    if (!fh) throw new Error("Another occier process is writing the vault. Try again shortly.");
+  }
+
+  await fh.write(`${process.pid}\n${Date.now()}\n`);
+  await fh.close();
+
+  return {
+    async release() {
+      try { await writeFile(lockPath, ""); /* suppress unused */ } catch { /* ignore */ }
+    },
+  };
+}
+
+// ── write queue ──
+
 const _writeQueues = new Map();
 
 function enqueueWrite(filePath, task) {
@@ -28,24 +74,93 @@ async function atomicWriteFile(filePath, data, options) {
   await rename(tmp, filePath);
 }
 
-// Legacy v1 credentials live in ~/.config/claude-code/providers.env with
-// original-case keys (DEEPSEEK_API_KEY). The v2 vault uses lowercase keys.
-// Surface v1 entries (lowercased) so both generations see each other's keys.
-// NOTE: the env file is parsed directly here (not via config-io) to avoid a
-// module cycle — config-io reads the v2 vault through this module.
+async function lockedWrite(filePath, data, options) {
+  const lock = await acquireLock(filePath);
+  try {
+    await enqueueWrite(filePath, () => atomicWriteFile(filePath, data, options));
+  } finally {
+    await lock.release();
+  }
+}
+
+// ── vault meta ──
+
+function getMetaPath(filePath) {
+  const base = basename(filePath);
+  return join(dirname(filePath), `${base}.meta`);
+}
+
+export function readVaultMetaSync(filePath) {
+  const metaPath = getMetaPath(filePath || VAULT_FILE);
+  try {
+    const raw = readFileSync(metaPath, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function writeVaultMeta(filePath, meta) {
+  const metaPath = getMetaPath(filePath);
+  await mkdir(dirname(metaPath), { recursive: true, mode: 0o700 });
+  await writeFile(metaPath, JSON.stringify(meta, null, 2), { mode: 0o600 });
+}
+
+function generateMeta(passphraseProtected = false) {
+  return {
+    version: 2,
+    kdf: "pbkdf2-sha256",
+    iterations: DEFAULT_ITERATIONS,
+    salt: randomBytes(SALT_LEN).toString("base64"),
+    passphraseProtected,
+  };
+}
+
+// ── key derivation ──
+
+export function deriveMasterKey(passphrase, salt, iterations = DEFAULT_ITERATIONS) {
+  const saltBuf = typeof salt === "string" && salt !== OLD_SALT
+    ? Buffer.from(salt, "base64")
+    : Buffer.from(salt, "utf-8");
+  return pbkdf2Sync(passphrase, saltBuf, iterations, KEY_LEN, KEY_DIGEST).toString("hex");
+}
+
+function deriveKey(masterKey, salt) {
+  return pbkdf2Sync(masterKey, salt, DEFAULT_ITERATIONS, KEY_LEN, KEY_DIGEST);
+}
+
+export function getDeviceFingerprint() {
+  const parts = [hostname()];
+  if (process.platform === "linux") {
+    try {
+      const machineId = readFileSync("/etc/machine-id", "utf-8").trim();
+      parts.push(machineId);
+    } catch {
+      try {
+        const dbusId = readFileSync("/var/lib/dbus/machine-id", "utf-8").trim();
+        parts.push(dbusId);
+      } catch { /* file not found, skip */ }
+    }
+  }
+  parts.push(process.env.USER || process.env.USERNAME || "unknown");
+  return parts.join("|");
+}
+
+export function maskValue(value) {
+  if (!value) return "<not set>";
+  if (value.length <= 8) return "****";
+  return value.slice(0, 4) + "****" + value.slice(-4);
+}
+
+// ── legacy env parsing ──
+
 const LEGACY_ENV_FILE = join(
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
   "claude-code",
   "providers.env",
 );
 
-async function readLegacyEnvEntries() {
-  let raw;
-  try {
-    raw = await readFile(LEGACY_ENV_FILE, "utf-8");
-  } catch {
-    return {};
-  }
+function parseEnvContent(raw) {
   const merged = {};
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
@@ -70,6 +185,18 @@ async function readLegacyEnvEntries() {
   }
   return merged;
 }
+
+async function readLegacyEnvEntries() {
+  let raw;
+  try {
+    raw = await readFile(LEGACY_ENV_FILE, "utf-8");
+  } catch {
+    return {};
+  }
+  return parseEnvContent(raw);
+}
+
+// ── stores ──
 
 export class CredentialStore {
   async get(_key) {
@@ -99,7 +226,6 @@ export class FileCredentialStore extends CredentialStore {
   async readRaw() {
     let raw;
     try {
-      await access(this.filePath, constants.R_OK);
       raw = await readFile(this.filePath, "utf-8");
     } catch {
       return {};
@@ -107,8 +233,6 @@ export class FileCredentialStore extends CredentialStore {
     try {
       return JSON.parse(raw);
     } catch {
-      // Never destroy credentials: move the unreadable file aside instead of
-      // silently overwriting it with an empty object on the next set().
       const aside = `${this.filePath}.corrupt-${Date.now()}`;
       await rename(this.filePath, aside).catch(() => {});
       process.stderr.write(
@@ -120,14 +244,9 @@ export class FileCredentialStore extends CredentialStore {
 
   async writeRaw(data) {
     await this.ensureDir();
-    await enqueueWrite(this.filePath, () =>
-      atomicWriteFile(this.filePath, JSON.stringify(data, null, 2), {
-        mode: 0o600,
-      }),
-    );
+    await lockedWrite(this.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
   }
 
-  // Raw local data without legacy-env merge. Used by the v1 bridge.
   async readAll() {
     return this.readRaw();
   }
@@ -178,6 +297,13 @@ export class EncryptedFileStore extends CredentialStore {
     super();
     this.masterKey = masterKey;
     this.filePath = filePath || VAULT_FILE;
+    this._needsMigration = false;
+    this._rawPassphrase = null;
+  }
+
+  setMigrationState(migrate, rawPassphrase) {
+    this._needsMigration = migrate;
+    this._rawPassphrase = rawPassphrase;
   }
 
   async ensureDir() {
@@ -192,7 +318,6 @@ export class EncryptedFileStore extends CredentialStore {
     return legacy[key] ?? null;
   }
 
-  // Raw local data without legacy-env merge. Used by the v1 bridge.
   async readAll() {
     return this._readEncrypted();
   }
@@ -223,7 +348,24 @@ export class EncryptedFileStore extends CredentialStore {
     }));
   }
 
+  async has(key) {
+    const data = await this._readEncrypted();
+    if (key in data) return true;
+    const legacy = await readLegacyEnvEntries();
+    return key in legacy;
+  }
+
   async _readEncrypted() {
+    const meta = readVaultMetaSync(this.filePath);
+
+    if (!meta) {
+      return this._tryOldDecrypt();
+    }
+
+    return this._decryptWithParams();
+  }
+
+  async _tryOldDecrypt() {
     try {
       await access(this.filePath, constants.R_OK);
     } catch {
@@ -232,19 +374,55 @@ export class EncryptedFileStore extends CredentialStore {
 
     const raw = await readFile(this.filePath);
 
-    // Auto-migration: early vault versions stored plaintext JSON in vault.enc.
-    // Detect it and parse as-is; the next write re-encrypts the contents.
     if (raw.length > 0 && raw[0] === 0x7b /* '{' */) {
       try {
-        return JSON.parse(raw.toString("utf-8"));
+        const data = JSON.parse(raw.toString("utf-8"));
+        this._needsMigration = true;
+        return data;
       } catch {
         return {};
       }
     }
 
-    const SALT_LEN = 32;
-    const IV_LEN = 16;
-    const TAG_LEN = 16;
+    if (raw.length < SALT_LEN + IV_LEN + TAG_LEN + 1) {
+      return {};
+    }
+
+    const salt = raw.subarray(0, SALT_LEN);
+    const iv = raw.subarray(SALT_LEN, SALT_LEN + IV_LEN);
+    const tag = raw.subarray(raw.length - TAG_LEN);
+    const ciphertext = raw.subarray(SALT_LEN + IV_LEN, raw.length - TAG_LEN);
+
+    try {
+      const oldKey = deriveKey(this.masterKey, salt);
+      const decipher = createDecipheriv("aes-256-gcm", oldKey, iv);
+      decipher.setAuthTag(tag);
+      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+      this._needsMigration = true;
+      return JSON.parse(decrypted.toString("utf-8"));
+    } catch {
+      return {};
+    }
+  }
+
+  async _decryptWithParams() {
+    try {
+      await access(this.filePath, constants.R_OK);
+    } catch {
+      return {};
+    }
+
+    const raw = await readFile(this.filePath);
+
+    if (raw.length > 0 && raw[0] === 0x7b /* '{' */) {
+      try {
+        const data = JSON.parse(raw.toString("utf-8"));
+        this._needsMigration = true;
+        return data;
+      } catch {
+        return {};
+      }
+    }
 
     if (raw.length < SALT_LEN + IV_LEN + TAG_LEN + 1) {
       const msg = "Vault file is too short — may be corrupted";
@@ -259,17 +437,27 @@ export class EncryptedFileStore extends CredentialStore {
     const key = deriveKey(this.masterKey, salt);
     const decipher = createDecipheriv("aes-256-gcm", key, iv);
     decipher.setAuthTag(tag);
-    const decrypted = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]);
+    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return JSON.parse(decrypted.toString("utf-8"));
   }
 
   async _writeEncrypted(data) {
     await this.ensureDir();
-    const SALT_LEN = 32;
-    const IV_LEN = 16;
+
+    if (this._needsMigration) {
+      const meta = generateMeta(
+        this._rawPassphrase ? this._rawPassphrase !== getDeviceFingerprint() : false,
+      );
+      const newMasterKey = deriveMasterKey(
+        this._rawPassphrase || getDeviceFingerprint(),
+        meta.salt,
+        meta.iterations,
+      );
+      this.masterKey = newMasterKey;
+      await writeVaultMeta(this.filePath, meta);
+      this._needsMigration = false;
+    }
+
     const salt = randomBytes(SALT_LEN);
     const iv = randomBytes(IV_LEN);
     const key = deriveKey(this.masterKey, salt);
@@ -278,49 +466,43 @@ export class EncryptedFileStore extends CredentialStore {
     const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     const tag = cipher.getAuthTag();
     const output = Buffer.concat([salt, iv, encrypted, tag]);
-    await enqueueWrite(this.filePath, () =>
-      atomicWriteFile(this.filePath, output, { mode: 0o600 }),
-    );
+    await lockedWrite(this.filePath, output, { mode: 0o600 });
   }
 }
 
-function deriveKey(masterKey, salt) {
-  return pbkdf2Sync(masterKey, salt, 100000, 32, "sha256");
-}
-
-export function getDeviceFingerprint() {
-  const parts = [hostname()];
-  if (process.platform === "linux") {
-    try {
-      try {
-        parts.push(readFileSync("/etc/machine-id", "utf-8").trim());
-      } catch {
-        try {
-          parts.push(readFileSync("/var/lib/dbus/machine-id", "utf-8").trim());
-        } catch { /* file not found, skip */ }
-      }
-    } catch { /* cannot read, skip */ }
-  }
-  parts.push(process.env.USER || process.env.USERNAME || "unknown");
-  return parts.join("|");
-}
-
-export function deriveMasterKey(passphrase) {
-  return pbkdf2Sync(passphrase, "occier-vault-salt", 100000, 32, "sha256")
-    .toString("hex");
-}
-
-export function maskValue(value) {
-  if (!value) return "<not set>";
-  if (value.length <= 8) return "****";
-  return value.slice(0, 4) + "****" + value.slice(-4);
-}
+// ── factory ──
 
 export function createStore(type = "encrypted", options = {}) {
   if (type === "encrypted") {
-    const masterKey =
-      options.masterKey || deriveMasterKey(getDeviceFingerprint());
-    return new EncryptedFileStore(masterKey, options.filePath);
+    const filePath = options.filePath || VAULT_FILE;
+    const rawPassphrase = options.passphrase
+      || process.env.OCCIER_PASSPHRASE
+      || getDeviceFingerprint();
+
+    const meta = readVaultMetaSync(filePath);
+
+    let masterKey;
+    if (meta) {
+      masterKey = deriveMasterKey(rawPassphrase, meta.salt, meta.iterations);
+    } else {
+      masterKey = deriveMasterKey(rawPassphrase, OLD_SALT, OLD_ITERATIONS);
+    }
+
+    const store = new EncryptedFileStore(masterKey, filePath);
+    if (!meta) {
+      store.setMigrationState(true, rawPassphrase);
+    } else if (options.passphrase && meta && !meta.passphraseProtected) {
+      // User is providing passphrase but vault wasn't created with one
+      meta.passphraseProtected = true;
+      // Migration: re-derive with passphrase
+      const newMasterKey = deriveMasterKey(rawPassphrase, meta.salt, meta.iterations);
+      store.masterKey = newMasterKey;
+      store._needsMigration = true;
+      store._rawPassphrase = rawPassphrase;
+    }
+    return store;
   }
   return new FileCredentialStore(options.filePath || VAULT_FILE);
 }
+
+export { parseEnvContent };
