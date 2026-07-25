@@ -212,3 +212,33 @@ export async function showMirrors() {
   divider();
   console.log(``);
 }
+
+export async function networkMirror(args) {
+  const sub = args[0] || "list";
+  if (sub === "test") {
+    const { testAllMirrors } = await import("../../mirrors/speedtest.mjs");
+    const results = await testAllMirrors();
+    console.log(`\n  ${c.boldWhite("Mirror Latency Test")}\n`);
+    for (const r of results) {
+      const icon = r.status === "ok" ? c.green(`${r.ms}ms`.padEnd(8)) : c.red("fail".padEnd(8));
+      console.log(`    ${icon} ${r.mirrorId.padEnd(24)}`);
+    }
+    console.log(``);
+  } else if (sub === "switch") {
+    const scope = args[1] || "npm";
+    const { autoSwitchMirror } = await import("../../mirrors/speedtest.mjs");
+    const result = await autoSwitchMirror(scope);
+    if (result.switched) {
+      console.log(`\n  ${c.green("✓")} Switched to ${c.cyan(result.best)} (${result.latency}ms)\n`);
+    } else {
+      console.log(`\n  ${c.yellow("!")} ${result.reason}\n`);
+    }
+  } else if (sub === "restore") {
+    const scope = args[1] || "npm";
+    const { restoreOfficialMirror } = await import("../../mirrors/speedtest.mjs");
+    await restoreOfficialMirror(scope);
+    console.log(`\n  ${c.green("✓")} Restored official ${scope} mirror\n`);
+  } else {
+    await showMirrors();
+  }
+}

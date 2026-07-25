@@ -30,7 +30,7 @@ const COMMANDS = [
       configure: { modulePath: "../commands/v2/network.mjs", exportName: "configureNetwork", help: "Configure proxy & mirrors" },
       test: { modulePath: "../commands/v2/network.mjs", exportName: "testNetwork", help: "Test connectivity & latency" },
       proxy: { modulePath: "../commands/v2/network.mjs", exportName: "configureProxy", help: "Set up proxy" },
-      mirror: { modulePath: "../commands/v2/network.mjs", exportName: "showMirrors", help: "List mirrors" },
+      mirror: { modulePath: "../commands/v2/network.mjs", exportName: "networkMirror", help: "Mirror management (test/switch/restore)" },
     },
   },
   {
