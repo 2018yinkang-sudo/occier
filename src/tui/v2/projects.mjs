@@ -1,6 +1,6 @@
 import { line, sectionHeader } from "./panel-utils.mjs";
 
-export async function renderPanel(term) {
+export async function renderPanel(term, _state = {}) {
   const pad = "  ";
 
   sectionHeader(term, "Projects");

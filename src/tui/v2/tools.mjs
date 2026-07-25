@@ -14,7 +14,7 @@ export async function renderPanel(term, state = {}) {
   const { claude, opencode, gh } = _cache;
   const pad = "  ";
   const budget = makeLineBudget(term, state.scrollOffset ?? 0);
-  const selectedId = state.mode === "select" ? state.cursorItemId : null;
+  const selectedId = state.cursorItemId ?? null;
   const draw = (id, ...parts) => {
     if (id && selectedId === id) {
       selectedLine(term, ...parts);

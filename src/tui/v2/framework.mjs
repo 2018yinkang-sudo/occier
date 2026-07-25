@@ -45,6 +45,9 @@ let _scrollOffsets = {}; // tabId -> scroll offset
 let _selectedItemIds = {}; // tabId -> selected item id
 let _statusMessage = null;
 let _statusTimer = null;
+let _inputSpec = null;
+let _inputBuffer = "";
+let _inputCursor = 0;
 
 function setMode(mode) {
   _mode = mode;
@@ -81,7 +84,16 @@ export function startDashboard(initialTab = 0) {
   term.grabInput(true);
   term.clear();
 
-  term.on("key", (key) => {
+  term.on("key", async (key) => {
+    if (_mode === MODES.INPUT) {
+      if (key === "CTRL_C") {
+        exitDashboard();
+        return;
+      }
+      handleInputKey(key);
+      return;
+    }
+
     if (key === "CTRL_C" || key === "ESCAPE" || key === "q") {
       if (_mode !== MODES.NAVIGATE) {
         setMode(MODES.NAVIGATE);
@@ -94,7 +106,7 @@ export function startDashboard(initialTab = 0) {
     if (_mode === MODES.NAVIGATE) {
       handleNavigateKey(key);
     } else if (_mode === MODES.SELECT) {
-      handleSelectKey(key);
+      await handleSelectKey(key);
     }
   });
 
@@ -156,10 +168,113 @@ async function renderScreen() {
   // If the user has switched tabs since we started, do not paint a stale footer.
   if (gen !== _renderGen) return;
 
-  drawFooter();
+  if (_mode === MODES.INPUT && _inputSpec) {
+    drawInputModal();
+  } else {
+    term.hideCursor();
+    drawFooter();
+    // Remove any leftover content below the footer from a previous larger panel.
+    try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
+  }
+}
 
-  // Remove any leftover content below the footer from a previous larger panel.
-  try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
+function drawInputModal() {
+  const { title, prompt, password } = _inputSpec;
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  const h = Number.isFinite(term.height) ? term.height : 24;
+  const row = Math.floor(h / 2);
+  const display = password ? "*".repeat(_inputBuffer.length) : _inputBuffer;
+
+  term.moveTo(1, row);
+  term.styleReset();
+  term.bgGray();
+  term.brightWhite(title);
+  term("\n");
+  term.bgGray();
+  term.white(prompt);
+  term.styleReset();
+  term.bgBlack();
+  term.white(display);
+  const pad = Math.max(0, w - prompt.length - display.length);
+  if (pad > 0) term.black(" ".repeat(pad));
+  term.styleReset();
+
+  // Position the visible cursor inside the input field.
+  const col = Math.min(prompt.length + _inputCursor, w - 1) + 1;
+  term.moveTo(col, row + 1);
+  term.hideCursor(false);
+}
+
+function handleInputKey(key) {
+  if (key === "ENTER") {
+    submitInput();
+    return;
+  }
+  if (key === "ESCAPE") {
+    cancelInput();
+    return;
+  }
+  if (key === "BACKSPACE") {
+    if (_inputCursor > 0) {
+      _inputBuffer = _inputBuffer.slice(0, _inputCursor - 1) + _inputBuffer.slice(_inputCursor);
+      _inputCursor--;
+    }
+    renderScreen();
+    return;
+  }
+  if (key === "DELETE") {
+    if (_inputCursor < _inputBuffer.length) {
+      _inputBuffer = _inputBuffer.slice(0, _inputCursor) + _inputBuffer.slice(_inputCursor + 1);
+    }
+    renderScreen();
+    return;
+  }
+  if (key === "LEFT") {
+    _inputCursor = Math.max(0, _inputCursor - 1);
+    renderScreen();
+    return;
+  }
+  if (key === "RIGHT") {
+    _inputCursor = Math.min(_inputBuffer.length, _inputCursor + 1);
+    renderScreen();
+    return;
+  }
+  if (key.length === 1 && key >= " " && key <= "~") {
+    _inputBuffer = _inputBuffer.slice(0, _inputCursor) + key + _inputBuffer.slice(_inputCursor);
+    _inputCursor++;
+    renderScreen();
+  }
+}
+
+async function submitInput() {
+  const spec = _inputSpec;
+  const value = _inputBuffer;
+  _inputSpec = null;
+  _inputBuffer = "";
+  _inputCursor = 0;
+  _mode = MODES.NAVIGATE;
+
+  let message = null;
+  if (spec && spec.continue) {
+    try {
+      message = await spec.continue(value);
+    } catch (err) {
+      message = `Error: ${err.message}`;
+    }
+  }
+
+  if (message) {
+    showStatus(message);
+  } else {
+    renderScreen();
+  }
+}
+
+function cancelInput() {
+  _inputSpec = null;
+  _inputBuffer = "";
+  _inputCursor = 0;
+  setMode(MODES.NAVIGATE);
 }
 
 function drawContent(state = {}, gen) {
@@ -173,7 +288,7 @@ function handleNavigateKey(key) {
     switchTab((_currentTab - 1 + TABS.length) % TABS.length);
   } else if (key === "RIGHT" || key === "TAB") {
     switchTab((_currentTab + 1 + TABS.length) % TABS.length);
-  } else if (key === "f5") {
+  } else if (key === "F5") {
     switchTab(_currentTab);
   } else if (key === "UP") {
     scrollContent(-1);
@@ -207,7 +322,16 @@ async function handleSelectKey(key) {
   } else if (key === "DOWN") {
     idx = Math.min(items.length - 1, idx + 1);
   } else if (key === "ENTER") {
-    const result = await invokeAction(items[idx].id);
+    const item = items[idx];
+    const result = await invokeAction(item.id);
+    // If the user left select mode during the action (e.g. ESC), discard result.
+    if (_mode !== MODES.SELECT) return;
+    if (result && typeof result === "object" && result.input) {
+      _inputSpec = { ...result.input, continue: result.continue };
+      _inputBuffer = "";
+      setMode(MODES.INPUT);
+      return;
+    }
     if (result) showStatus(result);
     setMode(MODES.NAVIGATE);
     return;
@@ -264,7 +388,7 @@ function scrollContent(delta) {
   const viewportLines = contentMaxLines(term);
   if (info.totalLines <= viewportLines) return;
 
-  const tabId = TABS[_currentTab].id;
+  const tabId = currentTabId();
   const current = _scrollOffsets[tabId] || 0;
   const maxOffset = Math.max(0, info.totalLines - viewportLines);
   const next = Math.max(0, Math.min(maxOffset, current + delta));

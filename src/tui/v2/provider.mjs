@@ -1,4 +1,4 @@
-import { getProviderStatus, testProviderConnectivity } from "../../services/provider.mjs";
+import { getProviderStatus, testProviderConnectivity, connectProvider } from "../../services/provider.mjs";
 import { line, selectedLine, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
@@ -13,7 +13,7 @@ export async function renderPanel(term, state = {}) {
 
   const pad = "  ";
   const budget = makeLineBudget(term, state.scrollOffset ?? 0);
-  const selectedId = state.mode === "select" ? state.cursorItemId : null;
+  const selectedId = state.cursorItemId ?? null;
   const draw = (id, ...parts) => {
     if (id && selectedId === id) {
       selectedLine(term, ...parts);
@@ -122,7 +122,19 @@ export async function handleAction(_term, itemId) {
       }
       return `${p.label} unreachable`;
     }
-    return `${p.label}: use 'occier provider connect ${itemId}'`;
+    return {
+      input: {
+        title: `Connect ${p.label}`,
+        prompt: `API key for ${p.label}: `,
+        password: true,
+      },
+      async continue(apiKey) {
+        const result = await connectProvider(itemId, apiKey);
+        _lastUpdate = 0;
+        if (result.ok) return `${p.label} connected`;
+        return `Error: ${result.error}`;
+      },
+    };
   } catch (err) {
     return `Error: ${err.message}`;
   }

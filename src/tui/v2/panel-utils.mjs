@@ -63,8 +63,6 @@ export function makeLineBudget(term, scrollOffset = 0) {
       drawn++;
       return drawn > max;
     },
-    // 1-based logical line number that is about to be drawn.
-    get nextLine() { return logical + 1; },
   };
 }
 
