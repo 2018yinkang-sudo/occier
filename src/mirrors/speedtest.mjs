@@ -40,16 +40,16 @@ export async function autoSwitchMirror(scope, thresholdMs = 500) {
   }
 
   const bestId = best[0].mirrorId;
-  await Promise.all(mirrors.map((m) =>
-    m.id === bestId ? enableMirror(m.id) : disableMirror(m.id),
-  ));
+  for (const m of mirrors) {
+    await (m.id === bestId ? enableMirror(m.id) : disableMirror(m.id));
+  }
   return { switched: true, best: bestId, latency: best[0].ms, results };
 }
 
 export async function restoreOfficialMirror(scope) {
   const mirrors = await mirrorsByScope(scope);
-  await Promise.all(mirrors.map((m) =>
-    m.official ? enableMirror(m.id) : disableMirror(m.id),
-  ));
+  for (const m of mirrors) {
+    await (m.official ? enableMirror(m.id) : disableMirror(m.id));
+  }
   return true;
 }

@@ -169,7 +169,8 @@ export async function handleAction(_term, itemId) {
       const p = _cache.proxy;
       if (!p?.http_proxy) return "No proxy configured";
       const url = new URL(p.http_proxy);
-      const result = await testProxy(url.hostname, url.port || 80);
+      const proto = url.protocol.replace(":", "").replace("socks5h", "socks5");
+      const result = await testProxy(url.hostname, url.port || 1080, proto);
       _lastUpdate = 0;
       return result.ok
         ? `Proxy works (${result.latency}ms)`
@@ -222,46 +223,10 @@ export async function handleAction(_term, itemId) {
     }
   }
 
-  if (itemId.startsWith("mirror-")) {
-    const scope = itemId.replace("mirror-", "");
-    const { allMirrors } = await import("../../mirrors/registry.mjs");
-    const mirrors = await allMirrors();
-    const scopeMirrors = mirrors.filter((m) => m.scope === scope);
-    if (scopeMirrors.length === 0) return null;
-
-    // Test all mirrors in scope and pick fastest
-    try {
-      const results = await Promise.allSettled(
-        scopeMirrors.map((m) => import("../../mirrors/speedtest.mjs").then(({ testMirrorLatency }) =>
-          testMirrorLatency(m.id),
-        )),
-      );
-      const valid = results
-        .filter((r) => r.status === "fulfilled")
-        .map((r) => r.value)
-        .filter((r) => r.status === "ok")
-        .sort((a, b) => a.ms - b.ms);
-
-      if (valid.length === 0) return "No reachable mirror found";
-
-      const best = valid[0];
-      const { switchMirror } = await import("../../services/network.mjs");
-      const result = await switchMirror(best.mirrorId, scope);
-      _lastUpdate = 0;
-      if (!result.ok) return `Error: ${result.error}`;
-      return `Switched to ${best.mirrorId.replace(scope + "-", "")} (${best.ms}ms)`;
-    } catch (err) {
-      return `Error: ${err.message}`;
-    }
-  }
-
   if (itemId === "mirror-auto") {
     try {
       const { allMirrors } = await import("../../mirrors/registry.mjs");
       const mirrors = await allMirrors();
-      let totalTested = 0;
-      let bestInfo = null;
-
       for (const scope of ["npm", "pip", "apt", "node"]) {
         const scopeMirrors = mirrors.filter((m) => m.scope === scope);
         if (scopeMirrors.length === 0) continue;
@@ -278,17 +243,43 @@ export async function handleAction(_term, itemId) {
           .filter((r) => r.status === "ok")
           .sort((a, b) => a.ms - b.ms);
         if (valid.length > 0) {
-          const best = valid[0];
           const { switchMirror } = await import("../../services/network.mjs");
-          await switchMirror(best.mirrorId, scope);
-          totalTested += results.length;
-          if (!bestInfo || best.ms < bestInfo.latency) {
-            bestInfo = { name: best.mirrorId, latency: best.ms };
-          }
+          await switchMirror(valid[0].mirrorId, scope);
         }
       }
       _lastUpdate = 0;
-      return `Auto-selected best mirrors across ${totalTested} tests`;
+      return `Auto-selected best mirrors`;
+    } catch (err) {
+      return `Error: ${err.message}`;
+    }
+  }
+
+  if (itemId.startsWith("mirror-")) {
+    const scope = itemId.replace("mirror-", "");
+    if (scope === "auto") return null; // handled above
+    try {
+      const { allMirrors } = await import("../../mirrors/registry.mjs");
+      const mirrors = await allMirrors();
+      const scopeMirrors = mirrors.filter((m) => m.scope === scope);
+      if (scopeMirrors.length === 0) return null;
+      const results = await Promise.allSettled(
+        scopeMirrors.map((m) =>
+          import("../../mirrors/speedtest.mjs").then(({ testMirrorLatency }) =>
+            testMirrorLatency(m.id),
+          ),
+        ),
+      );
+      const valid = results
+        .filter((r) => r.status === "fulfilled")
+        .map((r) => r.value)
+        .filter((r) => r.status === "ok")
+        .sort((a, b) => a.ms - b.ms);
+      if (valid.length === 0) return "No reachable mirror found";
+      const { switchMirror } = await import("../../services/network.mjs");
+      const result = await switchMirror(valid[0].mirrorId, scope);
+      _lastUpdate = 0;
+      if (!result.ok) return `Error: ${result.error}`;
+      return `Switched to ${valid[0].mirrorId.replace(scope + "-", "")} (${valid[0].ms}ms)`;
     } catch (err) {
       return `Error: ${err.message}`;
     }

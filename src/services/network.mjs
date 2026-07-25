@@ -131,36 +131,42 @@ export async function switchMirror(mirrorId, scope) {
   if (!mirror || mirror.scope !== scope) return { ok: false, error: "Mirror not found" };
 
   const url = mirror.baseUrl;
-  let needsSudo = false;
 
-  try {
-    if (scope === "npm") {
-      await runString("npm", ["config", "set", "registry", url], { timeout: 5000 });
-    } else if (scope === "pip") {
-      await runString("pip", ["config", "set", "global.index-url", url], { timeout: 5000 });
-    } else if (scope === "node") {
-      await runString("npm", ["config", "set", "disturl", url], { timeout: 5000 });
-    } else if (scope === "apt") {
-      needsSudo = true;
-      const content = mirror.official
-        ? `deb ${url} $(lsb_release -cs) main restricted universe multiverse\n`
-        : `deb ${url} $(lsb_release -cs) main restricted universe multiverse\n`;
-      const tmpPath = `/tmp/occier-apt-${process.pid}.list`;
-      const { writeFile: wf } = await import("fs/promises");
-      await wf(tmpPath, content);
-      await runWithSudo("cp", [tmpPath, "/etc/apt/sources.list.d/occier-mirror.list"]);
-    }
-  } catch (err) {
-    return { ok: false, error: err.message, needsSudo };
+  if (scope === "npm") {
+    const r = await runString("npm", ["config", "set", "registry", url], { timeout: 5000 });
+    if (r.exitCode !== 0) return { ok: false, error: `npm config failed: ${r.stderr || ""}` };
+  } else if (scope === "pip") {
+    const r = await runString("pip", ["config", "set", "global.index-url", url], { timeout: 5000 });
+    if (r.exitCode !== 0) return { ok: false, error: `pip config failed: ${r.stderr || ""}` };
+  } else if (scope === "node") {
+    const r = await runString("npm", ["config", "set", "disturl", url], { timeout: 5000 });
+    if (r.exitCode !== 0) return { ok: false, error: `npm disturl failed: ${r.stderr || ""}` };
+  } else if (scope === "apt") {
+    const codenameR = await runString("lsb_release", ["-cs"], { timeout: 5000 });
+    const codename = codenameR.exitCode === 0 ? codenameR.stdout.trim() : "noble";
+    const content = `deb ${url} ${codename} main restricted universe multiverse\n`;
+
+    const { mkdtemp, writeFile: wf } = await import("fs/promises");
+    const { join: pJoin } = await import("path");
+    const { tmpdir } = await import("os");
+    const tmpDir = await mkdtemp(pJoin(tmpdir(), "occier-apt-"));
+    const tmpPath = pJoin(tmpDir, "mirror.list");
+    await wf(tmpPath, content);
+
+    const r = await runWithSudo("cp", [tmpPath, "/etc/apt/sources.list.d/occier-mirror.list"]);
+    // Clean up temp dir
+    const { rm } = await import("fs/promises");
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    if (r.exitCode !== 0) return { ok: false, error: `apt source write failed: ${r.stderr || ""}` };
   }
 
-  // Update registry state
+  // Update registry state — serialize writes to avoid race
   const mirrors = await allMirrors();
-  await Promise.all(
-    mirrors.filter((m) => m.scope === scope).map((m) =>
-      m.id === mirrorId ? enableMirror(m.id) : disableMirror(m.id),
-    ),
-  );
+  for (const m of mirrors) {
+    if (m.scope !== scope) continue;
+    if (m.id === mirrorId) await enableMirror(m.id);
+    else await disableMirror(m.id);
+  }
 
   return { ok: true, mirrorId, scope, url };
 }

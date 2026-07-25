@@ -45,6 +45,7 @@ export async function vaultSet() {
       { name: 'API Key', value: 'api_key' },
       { name: 'GitHub Token', value: 'github_token' },
       { name: 'Proxy Password', value: 'proxy_password' },
+      { name: 'System Password', value: 'sudo_password' },
       { name: 'Other', value: 'other' },
     ],
   });

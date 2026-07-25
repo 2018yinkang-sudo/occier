@@ -120,8 +120,6 @@ export async function runWithSudo(cmd, args = [], opts = {}) {
     // Write password to stdin and close immediately — sudo reads it once.
     child.stdin.write(password + "\n");
     child.stdin.end();
-    // Clear the password variable (best effort in JS) — don't leak via closures.
-    // Note: V8 may retain the string in memory; this is a best-effort mitigation.
 
     child.stdout?.on("data", (d) => { stdout += d; });
     child.stderr?.on("data", (d) => { stderr += d; });
