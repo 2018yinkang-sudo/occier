@@ -9,14 +9,28 @@ const MIRROR_STATE_FILE = join(
 );
 
 const BUILTIN_MIRRORS = [
-  { id: "npm-aliyun", scope: "npm", baseUrl: "https://registry.npmmirror.com", region: "cn", official: false, enabled: false },
+  // npm (5)
   { id: "npm-official", scope: "npm", baseUrl: "https://registry.npmjs.org", region: "global", official: true, enabled: true },
-  { id: "pip-tsinghua", scope: "pip", baseUrl: "https://pypi.tuna.tsinghua.edu.cn/simple", region: "cn", official: false, enabled: false },
+  { id: "npm-npmmirror", scope: "npm", baseUrl: "https://registry.npmmirror.com", region: "cn", official: false, enabled: false },
+  { id: "npm-tencent", scope: "npm", baseUrl: "https://mirrors.cloud.tencent.com/npm/", region: "cn", official: false, enabled: false },
+  { id: "npm-huawei", scope: "npm", baseUrl: "https://mirrors.huaweicloud.com/repository/npm/", region: "cn", official: false, enabled: false },
+  { id: "npm-ustc", scope: "npm", baseUrl: "https://npmreg.proxy.ustclug.org/", region: "cn", official: false, enabled: false },
+  // pip (5)
   { id: "pip-official", scope: "pip", baseUrl: "https://pypi.org/simple", region: "global", official: true, enabled: true },
-  { id: "apt-aliyun", scope: "apt", baseUrl: "http://mirrors.aliyun.com/ubuntu/", region: "cn", official: false, enabled: false, distro: "ubuntu" },
+  { id: "pip-tsinghua", scope: "pip", baseUrl: "https://pypi.tuna.tsinghua.edu.cn/simple", region: "cn", official: false, enabled: false },
+  { id: "pip-aliyun", scope: "pip", baseUrl: "https://mirrors.aliyun.com/pypi/simple/", region: "cn", official: false, enabled: false },
+  { id: "pip-tencent", scope: "pip", baseUrl: "https://mirrors.cloud.tencent.com/pypi/simple", region: "cn", official: false, enabled: false },
+  { id: "pip-ustc", scope: "pip", baseUrl: "https://pypi.mirrors.ustc.edu.cn/simple/", region: "cn", official: false, enabled: false },
+  // apt (4)
   { id: "apt-official", scope: "apt", baseUrl: "http://archive.ubuntu.com/ubuntu/", region: "global", official: true, enabled: true, distro: "ubuntu" },
+  { id: "apt-aliyun", scope: "apt", baseUrl: "http://mirrors.aliyun.com/ubuntu/", region: "cn", official: false, enabled: false, distro: "ubuntu" },
+  { id: "apt-tsinghua", scope: "apt", baseUrl: "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/", region: "cn", official: false, enabled: false, distro: "ubuntu" },
+  { id: "apt-tencent", scope: "apt", baseUrl: "https://mirrors.cloud.tencent.com/ubuntu/", region: "cn", official: false, enabled: false, distro: "ubuntu" },
+  // node (4)
   { id: "node-official", scope: "node", baseUrl: "https://nodejs.org/dist", region: "global", official: true, enabled: true },
-  { id: "node-aliyun", scope: "node", baseUrl: "https://npmmirror.com/mirrors/node", region: "cn", official: false, enabled: false },
+  { id: "node-npmmirror", scope: "node", baseUrl: "https://npmmirror.com/mirrors/node", region: "cn", official: false, enabled: false },
+  { id: "node-tencent", scope: "node", baseUrl: "https://mirrors.cloud.tencent.com/nodejs-release/", region: "cn", official: false, enabled: false },
+  { id: "node-huawei", scope: "node", baseUrl: "https://mirrors.huaweicloud.com/nodejs/", region: "cn", official: false, enabled: false },
 ];
 
 const _internal = new Map();

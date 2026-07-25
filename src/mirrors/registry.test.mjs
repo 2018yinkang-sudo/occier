@@ -31,14 +31,14 @@ describe("mirror registry", () => {
   });
 
   it("enableMirror and disableMirror work", async () => {
-    const enResult = await enableMirror("npm-aliyun");
+    const enResult = await enableMirror("npm-npmmirror");
     expect(enResult).toBe(true);
-    const m = getMirror("npm-aliyun");
+    const m = getMirror("npm-npmmirror");
     expect(m.enabled).toBe(true);
 
-    const disResult = await disableMirror("npm-aliyun");
+    const disResult = await disableMirror("npm-npmmirror");
     expect(disResult).toBe(true);
-    const m2 = getMirror("npm-aliyun");
+    const m2 = getMirror("npm-npmmirror");
     expect(m2.enabled).toBe(false);
   });
 });
