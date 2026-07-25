@@ -172,7 +172,8 @@ export function getDeviceFingerprint() {
   return parts.join("|");
 }
 
-export function maskValue(value) {
+export function maskValue(value, type) {
+  if (type === "sudo_password") return value ? "configured" : "<not set>";
   if (!value) return "<not set>";
   if (value.length <= 4) return "****";
   return "****" + value.slice(-4);
@@ -312,7 +313,10 @@ export class FileCredentialStore extends CredentialStore {
     return Object.entries(data).map(([key, value]) => ({
       key,
       type: typeof value === "object" ? value.type : "unknown",
-      fingerprint: maskValue(typeof value === "string" ? value : value.value ?? ""),
+      fingerprint: maskValue(
+        typeof value === "string" ? value : value.value ?? "",
+        typeof value === "object" ? value.type : undefined,
+      ),
       updatedAt: value.updatedAt || null,
     }));
   }
@@ -386,7 +390,7 @@ export class EncryptedFileStore extends CredentialStore {
     return Object.entries(data).map(([key, entry]) => ({
       key,
       type: entry.type || "api_key",
-      fingerprint: maskValue(entry.value ?? ""),
+      fingerprint: maskValue(entry.value ?? "", entry.type),
       updatedAt: entry.updatedAt || null,
     }));
   }

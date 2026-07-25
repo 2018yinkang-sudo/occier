@@ -87,3 +87,63 @@ export function hasCommand(cmd) {
     timeout: 3000,
   }).then((r) => r.exitCode === 0);
 }
+
+// Run a command with sudo, reading the system password from the vault.
+// The password is injected via stdin pipe — NEVER as a command argument,
+// never in env vars, never in log output.
+// Throws if no sudo_password is stored in the vault.
+export async function runWithSudo(cmd, args = [], opts = {}) {
+  const { createStore } = await import("../store/credential-store.mjs");
+  const store = createStore();
+  const data = await store.get("sudo_password");
+  if (!data?.value) {
+    throw new Error(
+      "sudo_password not found in vault. Store it with: occier vault set",
+    );
+  }
+
+  const password = data.value;
+  const { timeout = 30000, env = process.env, cwd } = opts;
+
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const child = spawn("sudo", ["-S", "--", cmd, ...args], {
+      env,
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout,
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    // Write password to stdin and close immediately — sudo reads it once.
+    child.stdin.write(password + "\n");
+    child.stdin.end();
+    // Clear the password variable (best effort in JS) — don't leak via closures.
+    // Note: V8 may retain the string in memory; this is a best-effort mitigation.
+
+    child.stdout?.on("data", (d) => { stdout += d; });
+    child.stderr?.on("data", (d) => { stderr += d; });
+
+    child.on("error", (err) => {
+      resolve({
+        exitCode: -1,
+        stdout,
+        stderr: err.message,
+        duration: Date.now() - start,
+        timedOut: false,
+      });
+    });
+
+    child.on("exit", (code, signal) => {
+      resolve({
+        exitCode: code ?? (signal ? -2 : -1),
+        stdout,
+        stderr,
+        duration: Date.now() - start,
+        timedOut: signal === "SIGTERM",
+      });
+    });
+  });
+}
