@@ -1,5 +1,4 @@
 import { readFileSync, existsSync } from "fs";
-import { runString } from "../exec/runner.mjs";
 
 export function detectWslVersion() {
   try {
@@ -46,12 +45,6 @@ export function detectWslNetworkMode() {
   return "nat";
 }
 
-export function getWslConfigPath() {
-  const winHome = winPathToWsl(process.env.USERPROFILE);
-  if (!winHome) return null;
-  return `${winHome}/.wslconfig`;
-}
-
 export function buildWslConfig(networkingMode = "mirrored", autoProxy = true, dnsTunneling = true) {
   const lines = [
     "[wsl2]",
@@ -61,14 +54,4 @@ export function buildWslConfig(networkingMode = "mirrored", autoProxy = true, dn
     "",
   ];
   return lines.join("\n");
-}
-
-export async function wslNeedsRestart() {
-  if (!isWSL()) return false;
-  try {
-    await runString("wsl.exe", ["--status"], { timeout: 3000 });
-    return true;
-  } catch {
-    return false;
-  }
 }

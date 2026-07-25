@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { buildProxyEnv, buildShellRcBlock, removeShellRcBlock, detectExistingProxy, injectShellRc } from "./proxy.mjs";
+import { buildProxyEnv, buildShellRcBlock, detectExistingProxy, injectShellRc } from "./proxy.mjs";
 
 describe("buildProxyEnv", () => {
   it("builds HTTP proxy env vars", () => {
@@ -32,21 +32,6 @@ describe("buildShellRcBlock", () => {
     expect(block).toContain("proxy_off()");
     expect(block).toContain("127.0.0.1");
     expect(block).toContain("10808");
-  });
-});
-
-describe("removeShellRcBlock", () => {
-  it("removes proxy block from content", () => {
-    const content = "line1\n# >>> occier proxy >>>\nstuff\n# <<< occier proxy <<<\nline2";
-    const result = removeShellRcBlock(content);
-    expect(result).toContain("line1");
-    expect(result).toContain("line2");
-    expect(result).not.toContain(">>> occier proxy >>>");
-    expect(result).not.toContain("stuff");
-  });
-
-  it("returns original if no marker", () => {
-    expect(removeShellRcBlock("hello")).toBe("hello");
   });
 });
 
