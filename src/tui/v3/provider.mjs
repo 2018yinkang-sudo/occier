@@ -25,53 +25,63 @@ export async function renderPanel(term, state, budget) {
     }
   };
 
-  sectionHeader(term, "Providers");
-  if (budget.okLine()) return;
+  const emitLine = (...parts) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") line(term, ...parts);
+    return false;
+  };
+  const emitHeader = (title) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") sectionHeader(term, title);
+    return false;
+  };
+  const emitItem = (id, label, ...parts) => {
+    const st = budget.nextLine();
+    if (st === "draw") { budget.tag(id, label); draw(id, ...parts); }
+    else if (st === "beyond") { budget.tag(id, label); }
+    return false;
+  };
+
+  if (emitHeader("Providers")) return;
 
   const configured = _cache.filter((p) => p.configured);
   const available = _cache.filter((p) => !p.configured);
 
   if (configured.length > 0) {
-    line(term, { text: `${pad}Configured:`, fg: "brightGreen" });
-    if (budget.okLine()) return;
+    if (emitLine({ text: `${pad}Configured:`, fg: "brightGreen" })) return;
     for (const p of configured) {
       if (!budget.shouldShow(p.label)) continue;
-      budget.tag(p.id, p.label);
-      draw(p.id,
+      if (emitItem(p.id, p.label,
         { text: pad, fg: "white" },
         { text: "● ", fg: "brightGreen" },
         { text: p.label.length > 18 ? (p.label.slice(0, 17) + "…").padEnd(20) : p.label.padEnd(20), fg: "brightWhite" },
         { text: p.protocol.padEnd(10), fg: "gray" },
         { text: p.fingerprint || "", fg: "gray" },
-      );
-      if (budget.okLine()) break;
+      )) break;
     }
-    line(term, { text: "", fg: "white" });
-    if (budget.okLine()) return;
+    if (emitLine({ text: "", fg: "white" })) return;
   }
 
   if (available.length > 0) {
-    line(term, { text: `${pad}Available:`, fg: "brightWhite" });
-    if (budget.okLine()) return;
+    if (emitLine({ text: `${pad}Available:`, fg: "brightWhite" })) return;
     for (const p of available) {
       if (!budget.shouldShow(p.label)) continue;
-      budget.tag(p.id, p.label);
-      draw(p.id,
+      if (emitItem(p.id, p.label,
         { text: pad, fg: "white" },
         { text: "○ ", fg: "gray" },
         { text: p.label.length > 18 ? (p.label.slice(0, 17) + "…").padEnd(20) : p.label.padEnd(20), fg: "white" },
         { text: p.protocol, fg: "gray" },
-      );
-      if (budget.okLine()) break;
+      )) break;
     }
-    line(term, { text: "", fg: "white" });
-    if (budget.okLine()) return;
+    if (emitLine({ text: "", fg: "white" })) return;
   }
 
-  line(term,
+  emitLine(
     { text: `${pad}Run `, fg: "gray" },
     { text: "occier provider connect", fg: "cyan" },
-      { text: " to configure", fg: "gray" },
+    { text: " to configure", fg: "gray" },
   );
   term.styleReset();
 }

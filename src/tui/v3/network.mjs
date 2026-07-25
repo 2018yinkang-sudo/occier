@@ -24,32 +24,45 @@ export async function renderPanel(term, state, budget) {
     }
   };
 
-  sectionHeader(term, "Platform");
-  if (budget.okLine()) return;
+  const emitLine = (...parts) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") line(term, ...parts);
+    return false;
+  };
+  const emitHeader = (title) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") sectionHeader(term, title);
+    return false;
+  };
+  const emitItem = (id, label, ...parts) => {
+    const st = budget.nextLine();
+    if (st === "draw") { budget.tag(id, label); draw(id, ...parts); }
+    else if (st === "beyond") { budget.tag(id, label); }
+    return false;
+  };
 
-  line(term,
+  if (emitHeader("Platform")) return;
+
+  if (emitLine(
     { text: `${pad}OS: `.padEnd(18), fg: "brightWhite" },
     { text: platform.os || "unknown", fg: "white" },
-  );
-  if (budget.okLine()) return;
+  )) return;
 
   if (platform.isWSL) {
-    line(term,
+    if (emitLine(
       { text: `${pad}WSL mode: `.padEnd(18), fg: "brightWhite" },
       { text: platform.wslMode || "unknown", fg: platform.wslMode === "mirrored" ? "green" : "yellow" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
-  line(term, { text: "", fg: "white" });
-  if (budget.okLine()) return;
+  if (emitLine({ text: "", fg: "white" })) return;
 
-  sectionHeader(term, "Proxy Configuration");
-  if (budget.okLine()) return;
+  if (emitHeader("Proxy Configuration")) return;
 
   if (!proxy || Object.keys(proxy).length === 0) {
-    line(term, { text: `${pad}No proxy configured`, fg: "gray" });
-    if (budget.okLine()) return;
+    if (emitLine({ text: `${pad}No proxy configured`, fg: "gray" })) return;
   } else {
     for (const [k, v] of Object.entries(proxy)) {
       const w = Number.isFinite(term.width) ? term.width : 80;
@@ -57,31 +70,26 @@ export async function renderPanel(term, state, budget) {
       const displayVal = v
         ? (v.length > maxValLen ? v.slice(0, maxValLen - 1) + "…" : v)
         : "not set";
-      line(term,
+      if (emitLine(
         { text: `${pad}${k.padEnd(15)}`, fg: "brightWhite" },
         { text: displayVal, fg: v ? "brightGreen" : "gray" },
-      );
-      if (budget.okLine()) break;
+      )) break;
     }
   }
 
-  line(term, { text: "", fg: "white" });
-  if (budget.okLine()) return;
+  if (emitLine({ text: "", fg: "white" })) return;
 
-  sectionHeader(term, "Mirrors");
-  if (budget.okLine()) return;
+  if (emitHeader("Mirrors")) return;
 
   for (const m of mirrors || []) {
     if (!budget.shouldShow(m.id)) continue;
     const url = m.baseUrl.length > 50 ? `${m.baseUrl.slice(0, 47)}...` : m.baseUrl;
-    budget.tag(m.id, m.id);
-    draw(m.id,
+    if (emitItem(m.id, m.id,
       { text: `${pad}`, fg: "white" },
       { text: "● ", fg: m.enabled ? "brightGreen" : "gray" },
       { text: m.id.padEnd(18), fg: "brightWhite" },
       { text: url, fg: "gray" },
-    );
-    if (budget.okLine()) break;
+    )) break;
   }
   term.styleReset();
 }

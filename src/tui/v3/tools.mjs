@@ -24,66 +24,70 @@ export async function renderPanel(term, state, budget) {
     }
   };
 
-  sectionHeader(term, "Development Tools");
-  if (budget.okLine()) return;
+  const emitLine = (...parts) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") line(term, ...parts);
+    return false;
+  };
+  const emitHeader = (title) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") sectionHeader(term, title);
+    return false;
+  };
+  const emitItem = (id, label, ...parts) => {
+    const st = budget.nextLine();
+    if (st === "draw") { budget.tag(id, label); draw(id, ...parts); }
+    else if (st === "beyond") { budget.tag(id, label); }
+    return false;
+  };
+
+  if (emitHeader("Development Tools")) return;
 
   if (budget.shouldShow("Claude Code")) {
-    budget.tag("claude", "Claude Code");
-    draw("claude",
+    if (emitItem("claude", "Claude Code",
       { text: pad, fg: "white" },
       { text: "●", fg: claude.installed ? "brightGreen" : "yellow" },
       { text: "  Claude Code  ".padEnd(18), fg: "brightWhite" },
       { text: claude.installed ? `installed  ${claude.version || ""}` : "not installed", fg: claude.installed ? "green" : "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
   if (budget.shouldShow("OpenCode")) {
-    budget.tag("opencode", "OpenCode");
-    draw("opencode",
+    if (emitItem("opencode", "OpenCode",
       { text: pad, fg: "white" },
       { text: "●", fg: opencode.installed ? "brightGreen" : "yellow" },
       { text: "  OpenCode     ".padEnd(18), fg: "brightWhite" },
       { text: opencode.installed ? `installed  ${opencode.version || ""}` : "not installed", fg: opencode.installed ? "green" : "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
-  line(term, { text: "", fg: "white" });
-  if (budget.okLine()) return;
+  if (emitLine({ text: "", fg: "white" })) return;
 
-  sectionHeader(term, "GitHub");
-  if (budget.okLine()) return;
+  if (emitHeader("GitHub")) return;
 
   if (budget.shouldShow("GitHub CLI")) {
-    budget.tag("gh", "GitHub CLI");
-    draw("gh",
+    if (emitItem("gh", "GitHub CLI",
       { text: pad, fg: "white" },
       { text: "●", fg: gh.installed ? (gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
       { text: "  GitHub CLI   ".padEnd(18), fg: "brightWhite" },
       { text: gh.installed ? (gh.loggedIn ? "authenticated" : "not logged in") : "not installed", fg: gh.installed ? (gh.loggedIn ? "green" : "gray") : "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
-  line(term, { text: "", fg: "white" });
-  if (budget.okLine()) return;
+  if (emitLine({ text: "", fg: "white" })) return;
 
-  line(term,
-    { text: `${pad}Commands:`, fg: "brightWhite" },
-  );
-  if (budget.okLine()) return;
-  line(term,
+  if (emitLine({ text: `${pad}Commands:`, fg: "brightWhite" })) return;
+  if (emitLine(
     { text: `${pad}  `, fg: "white" },
     { text: "occier tool install claude", fg: "cyan" },
-  );
-  if (budget.okLine()) return;
-  line(term,
+  )) return;
+  if (emitLine(
     { text: `${pad}  `, fg: "white" },
     { text: "occier tool install opencode", fg: "cyan" },
-  );
-  if (budget.okLine()) return;
-  line(term,
+  )) return;
+  emitLine(
     { text: `${pad}  `, fg: "white" },
     { text: "occier tool update claude", fg: "cyan" },
   );

@@ -94,17 +94,17 @@ describe("TUI v3 panel-utils", () => {
     expect(budget.totalLines).toBe(0);
     expect(budget.items).toEqual([]);
 
-    budget.okLine(); // line 1
-    budget.okLine(); // line 2
+    budget.nextLine(); // line 1 (skip check)
+    budget.nextLine(); // line 2
     budget.tag("a", "Item A");
-    budget.okLine(); // line 3
+    budget.nextLine(); // line 3
     budget.tag("b", "Item B");
-    budget.okLine(); // line 4
+    budget.nextLine(); // line 4
 
     expect(budget.totalLines).toBe(4);
     expect(budget.items).toHaveLength(2);
-    expect(budget.items[0]).toMatchObject({ id: "a", label: "Item A", logicalLine: 3 });
-    expect(budget.items[1]).toMatchObject({ id: "b", label: "Item B", logicalLine: 4 });
+    expect(budget.items[0]).toMatchObject({ id: "a", label: "Item A", logicalLine: 2 });
+    expect(budget.items[1]).toMatchObject({ id: "b", label: "Item B", logicalLine: 3 });
   });
 
   it("makeLineBudget okLine returns true when viewport is full", async () => {

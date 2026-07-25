@@ -11,10 +11,13 @@ let _cache = { tools: null, providers: null, network: null, vault: null };
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache.tools || state.forceRefresh || state.cacheGen !== _lastCacheGen) {
-    _cache.tools = await getToolStatus();
-    _cache.providers = await getProviderStatus();
-    _cache.network = await getNetworkStatus();
-    _cache.vault = await listCredentials();
+    const [tools, providers, network, vault] = await Promise.all([
+      getToolStatus(),
+      getProviderStatus(),
+      getNetworkStatus(),
+      listCredentials(),
+    ]);
+    _cache = { tools, providers, network, vault };
     _lastUpdate = now;
     _lastCacheGen = state.cacheGen;
   }
@@ -30,93 +33,97 @@ export async function renderPanel(term, state, budget) {
     }
   };
 
-  sectionHeader(term, "System Status");
-  if (budget.okLine()) return;
+  // Helper: emit a non-selectable line with scroll-aware budget.
+  const emitLine = (...parts) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") line(term, ...parts);
+    return false;
+  };
+  // Helper: emit a section header.
+  const emitHeader = (title) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") sectionHeader(term, title);
+    return false;
+  };
+  // Helper: emit a selectable item. Tags the item even when "beyond" so
+  // the cursor can reach items below the fold. Returns true only when
+  // the panel should stop emitting non-selectable lines (beyond).
+  const emitItem = (id, label, ...parts) => {
+    const st = budget.nextLine();
+    if (st === "draw") { budget.tag(id, label); draw(id, ...parts); }
+    else if (st === "beyond") { budget.tag(id, label); }
+    return false;
+  };
+
+  if (emitHeader("System Status")) return;
 
   if (budget.shouldShow("Claude Code")) {
-    budget.tag("tool-claude", "Claude Code");
-    draw("tool-claude",
+    if (emitItem("tool-claude", "Claude Code",
       { text: pad, fg: "white" },
       { text: "●", fg: tools.claude.installed ? "brightGreen" : "yellow" },
       { text: "  Claude Code  ", fg: "white" },
       { text: tools.claude.installed ? `installed  ${tools.claude.version || ""}` : "not installed", fg: tools.claude.installed ? "green" : "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
   if (budget.shouldShow("OpenCode")) {
-    budget.tag("tool-opencode", "OpenCode");
-    draw("tool-opencode",
+    if (emitItem("tool-opencode", "OpenCode",
       { text: pad, fg: "white" },
       { text: "●", fg: tools.opencode.installed ? "brightGreen" : "yellow" },
       { text: "  OpenCode     ", fg: "white" },
       { text: tools.opencode.installed ? `installed  ${tools.opencode.version || ""}` : "not installed", fg: tools.opencode.installed ? "green" : "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
   if (budget.shouldShow("GitHub CLI")) {
-    budget.tag("tool-gh", "GitHub CLI");
-    draw("tool-gh",
+    if (emitItem("tool-gh", "GitHub CLI",
       { text: pad, fg: "white" },
       { text: "●", fg: tools.gh.installed ? (tools.gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
       { text: "  GitHub CLI   ", fg: "white" },
       { text: `installed  ${tools.gh.loggedIn ? "authenticated" : "not logged in"}`, fg: tools.gh.loggedIn ? "green" : "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
   const hasProxy = !!(network && network.proxy && network.proxy.http_proxy);
   if (budget.shouldShow("Network")) {
-    budget.tag("network", "Network");
-    draw("network",
+    if (emitItem("network", "Network",
       { text: pad, fg: "white" },
       { text: "●", fg: hasProxy ? "brightGreen" : "yellow" },
       { text: "  Network      ", fg: "white" },
       { text: hasProxy ? "proxy set" : "direct", fg: hasProxy ? "green" : "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
-  line(term, { text: "", fg: "white" });
-  if (budget.okLine()) return;
+  if (emitLine({ text: "", fg: "white" })) return;
 
-  sectionHeader(term, "Providers");
-  if (budget.okLine()) return;
+  if (emitHeader("Providers")) return;
 
   const configured = providers.filter((p) => p.configured);
   if (configured.length === 0) {
-    line(term,
-      { text: `${pad}No providers configured`, fg: "gray" },
-    );
-    if (budget.okLine()) return;
-    line(term,
+    if (emitLine({ text: `${pad}No providers configured`, fg: "gray" })) return;
+    if (emitLine(
       { text: `${pad}Run `, fg: "gray" },
       { text: "occier provider connect", fg: "cyan" },
       { text: " to add one", fg: "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   } else {
     for (const p of configured) {
       if (!budget.shouldShow(p.label)) continue;
-      budget.tag(`provider-${p.id}`, p.label);
-      draw(`provider-${p.id}`,
+      if (emitItem(`provider-${p.id}`, p.label,
         { text: pad, fg: "white" },
         { text: "●", fg: "brightGreen" },
         { text: `  ${p.label.padEnd(14)}`, fg: "brightWhite" },
         { text: p.protocol.padEnd(10), fg: "gray" },
         { text: p.fingerprint || "", fg: "gray" },
-      );
-      if (budget.okLine()) break;
+      )) break;
     }
   }
 
   const w = Number.isFinite(term.width) ? term.width : 80;
-  line(term,
-    { text: `${pad}${"─".repeat(Math.max(1, w - 4))}`, fg: "gray" },
-  );
-  if (budget.okLine()) return;
-  line(term,
+  if (emitLine({ text: `${pad}${"─".repeat(Math.max(1, w - 4))}`, fg: "gray" })) return;
+  emitLine(
     { text: `${pad}`, fg: "white" },
     { text: `${vault.count} credentials  |  ${configured.length} providers  |  ${network?.mirrors?.filter((m) => m.enabled).length || 0} mirrors`, fg: "brightWhite" },
   );

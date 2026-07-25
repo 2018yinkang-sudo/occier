@@ -579,9 +579,13 @@ async function loadPanel(tabId, scrollOffset) {
     term.red(`Panel "${tabId}" render error: ${err.message}\n`);
   }
 
-  // Initialize cursor to the first selectable item if not yet set for this tab.
-  if (_state.cursor[tabId] === undefined && budget.items.length > 0) {
-    _state.cursor[tabId] = budget.items[0].id;
+  // Initialize cursor to the first selectable item if not yet set for this tab,
+  // or reset if the current cursor points to a deleted item.
+  if (budget.items.length > 0) {
+    const currentCursor = _state.cursor[tabId];
+    if (currentCursor === undefined || !budget.items.some((i) => i.id === currentCursor)) {
+      _state.cursor[tabId] = budget.items[0].id;
+    }
   }
 
   _lastBudget = budget;
@@ -699,7 +703,11 @@ async function invokeAction(itemId) {
     if (result) {
       const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
       showStatus(result, kind);
-      if (kind === "success") _cacheGen++;
+      // Note: do NOT bump _cacheGen here. Plain string results from
+      // handleAction may be informational (e.g. "switch to Network tab").
+      // Panels that mutate state set their own _lastUpdate = 0 for
+      // self-invalidation. Cross-panel cacheGen bump only happens after
+      // multi-step input/select flows (submitInput / confirmSelect).
     }
   } catch (err) {
     showStatus(`Error: ${err.message}`, "error");

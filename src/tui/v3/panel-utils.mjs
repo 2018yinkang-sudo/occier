@@ -75,6 +75,13 @@ export function selectedLine(term, ...parts) {
 
 // v2 budget: counts logical lines and clamps drawn lines to the viewport.
 // v3 addition: records selectable-item positions via budget.tag().
+//
+// Scrolling contract: panels MUST call nextLine() BEFORE drawing each row.
+// nextLine() returns one of:
+//   "skip" — this logical line is above the scroll offset; do NOT draw it
+//   "draw" — this line is within the viewport; draw it
+//   "full" — the viewport is full; stop drawing (return/break)
+// This ensures scrollOffset actually hides rows instead of drawing them.
 export function makeLineBudget(term, scrollOffset = 0) {
   const max = contentMaxLines(term);
   let logical = 0;
@@ -83,14 +90,31 @@ export function makeLineBudget(term, scrollOffset = 0) {
   let searchQuery = null;
 
   return {
+    // Call BEFORE drawing a line. Returns "skip" | "draw" | "beyond".
+    //   "skip"   — above scroll offset; do NOT draw, do NOT tag
+    //   "draw"   — within viewport; draw and tag
+    //   "beyond" — past viewport; do NOT draw, but DO tag (so cursor
+    //              can reach items below the fold and ensureCursorVisible
+    //              can scroll to them)
+    nextLine() {
+      logical++;
+      if (logical <= scrollOffset) return "skip";
+      drawn++;
+      if (drawn > max) return "beyond";
+      return "draw";
+    },
+    // Legacy alias: returns true when the viewport is full (stop signal).
+    // Kept for backward-compat with panels not yet migrated to nextLine().
     okLine() {
       logical++;
       if (logical <= scrollOffset) return false;
       drawn++;
       return drawn > max;
     },
+    // Call AFTER nextLine() returns "draw", BEFORE drawing, to register a
+    // selectable item at the current logical position.
     tag(id, label) {
-      items.push({ id, label, logicalLine: logical + 1, drawnLine: drawn + 1 });
+      items.push({ id, label, logicalLine: logical, drawnLine: drawn });
     },
     setSearchQuery(q) {
       searchQuery = q ? q.toLowerCase() : null;

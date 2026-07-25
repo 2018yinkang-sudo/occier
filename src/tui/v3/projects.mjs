@@ -11,46 +11,57 @@ export async function renderPanel(term, state, budget) {
     }
   };
 
-  sectionHeader(term, "Projects");
-  if (budget.okLine()) return;
+  const emitLine = (...parts) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") line(term, ...parts);
+    return false;
+  };
+  const emitHeader = (title) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") sectionHeader(term, title);
+    return false;
+  };
+  const emitItem = (id, label, ...parts) => {
+    const st = budget.nextLine();
+    if (st === "draw") { budget.tag(id, label); draw(id, ...parts); }
+    else if (st === "beyond") { budget.tag(id, label); }
+    return false;
+  };
+
+  if (emitHeader("Projects")) return;
 
   if (budget.shouldShow("Create project")) {
-    budget.tag("create", "Create project");
-    draw("create",
+    if (emitItem("create", "Create project",
       { text: `${pad}`, fg: "white" },
       { text: "occier project create", fg: "cyan" },
       { text: " — create a new project", fg: "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
   if (budget.shouldShow("Open project")) {
-    budget.tag("open", "Open project");
-    draw("open",
+    if (emitItem("open", "Open project",
       { text: `${pad}`, fg: "white" },
       { text: "occier project open", fg: "cyan" },
       { text: " — open an existing project", fg: "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
   if (budget.shouldShow("Launch IDE")) {
-    budget.tag("launch", "Launch IDE");
-    draw("launch",
+    if (emitItem("launch", "Launch IDE",
       { text: `${pad}`, fg: "white" },
       { text: "occier launch", fg: "cyan" },
       { text: " — launch Claude Code or OpenCode", fg: "gray" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   }
 
-  line(term, { text: "", fg: "white" });
-  if (budget.okLine()) return;
+  if (emitLine({ text: "", fg: "white" })) return;
 
-  line(term,
+  emitLine(
     { text: `${pad}Press `, fg: "gray" },
     { text: "Enter", fg: "cyan" },
-      { text: " on an item to see the command to run.", fg: "gray" },
+    { text: " on an item to see the command to run.", fg: "gray" },
   );
   term.styleReset();
 }

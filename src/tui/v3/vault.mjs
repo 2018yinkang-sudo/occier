@@ -23,52 +23,68 @@ export async function renderPanel(term, state, budget) {
     }
   };
 
-  sectionHeader(term, "Credential Vault");
-  if (budget.okLine()) return;
+  const emitLine = (...parts) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") line(term, ...parts);
+    return false;
+  };
+  const emitHeader = (title) => {
+    const st = budget.nextLine();
+    if (st === "beyond") return true;
+    if (st === "draw") sectionHeader(term, title);
+    return false;
+  };
+  const emitItem = (id, label, ...parts) => {
+    const st = budget.nextLine();
+    if (st === "draw") { budget.tag(id, label); draw(id, ...parts); }
+    else if (st === "beyond") { budget.tag(id, label); }
+    return false;
+  };
+
+  if (emitHeader("Credential Vault")) return;
 
   if (_cache.count === 0) {
-    budget.tag("add-credential", "Add credential");
-    draw("add-credential",
+    if (emitItem("add-credential", "Add credential",
       { text: `${pad}No credentials — press Enter to add one`, fg: "yellow" },
-    );
-    if (budget.okLine()) return;
+    )) return;
   } else {
     for (const cred of _cache.credentials) {
       if (!budget.shouldShow(cred.key)) continue;
-      budget.tag(cred.key, cred.key);
-      draw(cred.key,
+      if (emitItem(cred.key, cred.key,
         { text: pad, fg: "white" },
         { text: "● ", fg: "brightCyan" },
         { text: cred.key.padEnd(25), fg: "brightWhite" },
-        { text: cred.type.padEnd(12), fg: "gray" },
+        { text: cred.type.padEnd(14), fg: "gray" },
         { text: cred.fingerprint, fg: "gray" },
-      );
-      if (budget.okLine()) break;
+      )) break;
     }
 
     // Always show "Add credential" at the bottom so users can add new keys
     // even when the vault is non-empty.
     if (budget.shouldShow("Add credential")) {
-      budget.tag("add-credential", "Add credential");
-      draw("add-credential",
+      if (emitItem("add-credential", "Add credential",
         { text: `${pad}+ Add credential`, fg: "yellow" },
-      );
-      if (budget.okLine()) return;
+      )) return;
     }
   }
 
-  line(term, { text: "", fg: "white" });
-  if (budget.okLine()) return;
+  if (emitLine({ text: "", fg: "white" })) return;
 
-  line(term,
-    { text: `${pad}All keys are stored encrypted.`, fg: "green" },
-  );
-  if (budget.okLine()) return;
-  line(term,
-    { text: `${pad}Press `, fg: "gray" },
-    { text: "Enter", fg: "cyan" },
+  if (emitLine({ text: `${pad}All keys are stored encrypted.`, fg: "green" })) return;
+  if (_cache.count === 0) {
+    emitLine(
+      { text: `${pad}Press `, fg: "gray" },
+      { text: "Enter", fg: "cyan" },
+      { text: " to add your first credential.", fg: "gray" },
+    );
+  } else {
+    emitLine(
+      { text: `${pad}Press `, fg: "gray" },
+      { text: "Enter", fg: "cyan" },
       { text: " on a key to remove, or '+ Add credential' to add.", fg: "gray" },
-  );
+    );
+  }
   term.styleReset();
 }
 
