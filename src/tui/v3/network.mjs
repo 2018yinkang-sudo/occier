@@ -2,13 +2,15 @@ import { getNetworkStatus, testConnectivity } from "../../services/network.mjs";
 import { line, selectedLine, sectionHeader } from "../v3/panel-utils.mjs";
 
 let _lastUpdate = 0;
+let _lastCacheGen = 0;
 let _cache = null;
 
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
-  if (now - _lastUpdate > 10000 || !_cache || state.forceRefresh) {
+  if (now - _lastUpdate > 10000 || !_cache || state.forceRefresh || state.cacheGen !== _lastCacheGen) {
     _cache = await getNetworkStatus();
     _lastUpdate = now;
+    _lastCacheGen = state.cacheGen;
   }
 
   const { platform, proxy, mirrors } = _cache;

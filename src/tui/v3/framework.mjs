@@ -38,6 +38,7 @@ const MOD_MAP = {
 
 let _state = createState();
 let _renderGen = 0;
+let _cacheGen = 0;
 let _switchTimer = null;
 let _statusTimer = null;
 let _loadedPanels = {};
@@ -298,15 +299,19 @@ function drawTabBar() {
     // Build label with optional badge
     const mod = _loadedPanels[MOD_MAP[tab.id]];
     let label = tab.label;
+    let suffix = "";
     if (mod && typeof mod.getTabSummary === "function") {
       try {
         const summary = mod.getTabSummary();
         if (summary && summary.count > 0) {
-          label = `${tab.label}(${summary.count})`;
+          suffix = `(${summary.count})`;
+        }
+        if (summary && summary.error) {
+          suffix = suffix ? `${suffix}!` : "(!)";
         }
       } catch { /* ignore errors from getTabSummary */ }
     }
-    const cell = `${gap}${label}${gap}`;
+    const cell = `${gap}${label}${suffix}${gap}`;
     term(cell);
     consumed += cell.length;
   }
@@ -458,7 +463,7 @@ async function loadPanel(tabId, scrollOffset, gen) {
   const budget = makeLineBudget(term, scrollOffset);
 
   try {
-    await mod.renderPanel(term, { scrollOffset, cursorItemId, mode: _state.mode, forceRefresh: _state.forceRefresh }, budget);
+    await mod.renderPanel(term, { scrollOffset, cursorItemId, mode: _state.mode, forceRefresh: _state.forceRefresh, cacheGen: _cacheGen }, budget);
   } catch (err) {
     if (gen !== _renderGen) return;
     term.moveTo(1, CONTENT_START);
@@ -582,6 +587,7 @@ async function invokeAction(itemId) {
     if (result) {
       const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
       showStatus(result, kind);
+      if (kind === "success") _cacheGen++;
     }
   } catch (err) {
     showStatus(`Error: ${err.message}`, "error");
@@ -612,6 +618,7 @@ async function submitInput() {
     if (result) {
       const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
       showStatus(result, kind);
+      if (kind === "success") _cacheGen++;
     }
   } catch (err) {
     showStatus(`Error: ${err.message}`, "error");

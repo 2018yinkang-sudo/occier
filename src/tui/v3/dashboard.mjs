@@ -5,16 +5,18 @@ import { listCredentials } from "../../services/vault.mjs";
 import { line, selectedLine, sectionHeader } from "../v3/panel-utils.mjs";
 
 let _lastUpdate = 0;
+let _lastCacheGen = 0;
 let _cache = { tools: null, providers: null, network: null, vault: null };
 
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
-  if (now - _lastUpdate > 10000 || !_cache.tools || state.forceRefresh) {
+  if (now - _lastUpdate > 10000 || !_cache.tools || state.forceRefresh || state.cacheGen !== _lastCacheGen) {
     _cache.tools = await getToolStatus();
     _cache.providers = await getProviderStatus();
     _cache.network = await getNetworkStatus();
     _cache.vault = await listCredentials();
     _lastUpdate = now;
+    _lastCacheGen = state.cacheGen;
   }
 
   const { tools, providers, network, vault } = _cache;

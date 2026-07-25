@@ -2,13 +2,17 @@ import { getProviderStatus, testProviderConnectivity, connectProvider } from "..
 import { line, selectedLine, sectionHeader } from "../v3/panel-utils.mjs";
 
 let _lastUpdate = 0;
+let _lastCacheGen = 0;
 let _cache = null;
+let _reachability = {};
 
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
-  if (now - _lastUpdate > 10000 || !_cache || state.forceRefresh) {
+  if (now - _lastUpdate > 10000 || !_cache || state.forceRefresh || state.cacheGen !== _lastCacheGen) {
     _cache = await getProviderStatus();
     _lastUpdate = now;
+    if (state.cacheGen !== _lastCacheGen) _reachability = {};
+    _lastCacheGen = state.cacheGen;
   }
 
   const pad = "  ";
@@ -73,7 +77,8 @@ export async function renderPanel(term, state, budget) {
 export function getTabSummary() {
   if (!_cache) return null;
   const configured = _cache.filter((p) => p.configured);
-  return { count: configured.length };
+  const hasError = configured.some((p) => _reachability[p.id] === false);
+  return { count: configured.length, error: hasError || undefined };
 }
 
 export async function handleAction(_term, itemId) {
@@ -84,6 +89,7 @@ export async function handleAction(_term, itemId) {
   try {
     if (p.configured) {
       const result = await testProviderConnectivity(itemId);
+      _reachability[itemId] = result.ok ? result.data?.reachable === true : false;
       if (result.ok && result.data?.reachable) {
         return `${p.label} is reachable`;
       }

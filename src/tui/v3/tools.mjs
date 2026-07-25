@@ -2,13 +2,15 @@ import { getToolStatus, installTool, updateTool } from "../../services/tools.mjs
 import { line, selectedLine, sectionHeader } from "../v3/panel-utils.mjs";
 
 let _lastUpdate = 0;
+let _lastCacheGen = 0;
 let _cache = null;
 
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
-  if (now - _lastUpdate > 10000 || !_cache || state.forceRefresh) {
+  if (now - _lastUpdate > 10000 || !_cache || state.forceRefresh || state.cacheGen !== _lastCacheGen) {
     _cache = await getToolStatus();
     _lastUpdate = now;
+    _lastCacheGen = state.cacheGen;
   }
 
   const { claude, opencode, gh } = _cache;
