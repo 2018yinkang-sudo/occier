@@ -1,4 +1,5 @@
 import { listCredentials } from "../../services/vault.mjs";
+import { line, sectionHeader, contentMaxLines } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
 let _cache = null;
@@ -10,37 +11,49 @@ export async function renderPanel(term) {
     _lastUpdate = now;
   }
 
-  const w = Math.min(64, term.width - 4);
   const pad = "  ";
+  let lines = 0;
+  const max = contentMaxLines(term);
 
-  drawSectionHeader(term, pad, w, "Credential Vault");
+  function okLine() { lines++; if (lines >= max) return true; return false; }
+
+  sectionHeader(term, "Credential Vault");
+  if (okLine()) return;
 
   if (_cache.count === 0) {
-    term.gray(`${pad}No credentials stored\n`);
-    term.gray(`${pad}Run `);
-    term.cyan("occier vault set");
-    term.gray(" to add one\n");
+    line(term,
+      { text: `${pad}No credentials stored`, fg: "gray" },
+    );
+    if (okLine()) return;
+    line(term,
+      { text: `${pad}Run `, fg: "gray" },
+      { text: "occier vault set", fg: "cyan" },
+      { text: " to add one", fg: "gray" },
+    );
+    if (okLine()) return;
   } else {
     for (const cred of _cache.credentials) {
-      term(`${pad}`);
-      term.brightCyan("● ");
-      term.bold(cred.key.padEnd(25));
-      term.gray(cred.type.padEnd(12));
-      term.dim(cred.fingerprint);
-      term("\n");
+      line(term,
+        { text: pad, fg: "white" },
+        { text: "● ", fg: "brightCyan" },
+        { text: cred.key.padEnd(25), fg: "brightWhite" },
+        { text: cred.type.padEnd(12), fg: "gray" },
+        { text: cred.fingerprint, fg: "gray" },
+      );
+      if (okLine()) break;
     }
   }
 
-  term("\n");
-  term.gray(`${pad}All keys are stored encrypted.\n`);
-  term.gray(`${pad}Run `);
-  term.cyan("occier vault list");
-  term.gray(" for details\n");
-}
+  line(term, { text: "", fg: "white" });
+  if (okLine()) return;
 
-function drawSectionHeader(term, pad, w, title) {
-  term(`${pad}`);
-  term.brightCyan("─ ");
-  term.bold(title);
-  term.gray(` ${"─".repeat(Math.max(0, w - title.length - 4))}\n`);
+  line(term,
+    { text: `${pad}All keys are stored encrypted.`, fg: "green" },
+  );
+  line(term,
+    { text: `${pad}Run `, fg: "gray" },
+    { text: "occier vault list", fg: "cyan" },
+    { text: " for details", fg: "gray" },
+  );
+  term.styleReset();
 }

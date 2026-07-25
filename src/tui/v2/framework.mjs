@@ -1,6 +1,16 @@
 import termkit from "terminal-kit";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+import { CONTENT_START } from "./panel-utils.mjs";
 
 const term = termkit.terminal;
+
+const _thisFile = fileURLToPath(import.meta.url);
+const pkg = JSON.parse(
+  readFileSync(join(dirname(_thisFile), "..", "..", "..", "package.json"), "utf-8"),
+);
+const VERSION = pkg.version;
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
@@ -11,30 +21,30 @@ const TABS = [
   { id: "projects", label: "Projects" },
 ];
 
-const COLORS = {
-  bg: "bgBlack",
-  fg: "white",
-  accent: "brightCyan",
-  success: "brightGreen",
-  warning: "brightYellow",
-  error: "brightRed",
-  info: "brightBlue",
-  muted: "gray",
-  border: "gray",
-  headerBg: "bgBrightCyan",
-  selectedBg: "bgBrightWhite",
-  selectedFg: "black",
+const MOD_MAP = {
+  dashboard: "./dashboard.mjs",
+  network: "./network.mjs",
+  vault: "./vault.mjs",
+  providers: "./provider.mjs",
+  tools: "./tools.mjs",
+  projects: "./projects.mjs",
 };
 
 let _currentTab = 0;
 let _renderGen = 0;
+let _switchTimer = null;
+
+// ── Public API ──
 
 export function startDashboard(initialTab = 0) {
   _currentTab = initialTab;
 
+  // Enter fullscreen first, then clear the alternate buffer. Clearing before
+  // fullscreen can leave artifacts from the normal screen on the first paint.
   term.fullscreen(true);
   term.hideCursor();
   term.grabInput(true);
+  term.clear();
 
   term.on("key", (key) => {
     if (key === "CTRL_C" || key === "ESCAPE" || key === "q") {
@@ -44,7 +54,7 @@ export function startDashboard(initialTab = 0) {
     if (key === "LEFT" || key === "SHIFT_TAB") {
       switchTab((_currentTab - 1 + TABS.length) % TABS.length);
     } else if (key === "RIGHT" || key === "TAB") {
-      switchTab((_currentTab + 1) % TABS.length);
+      switchTab((_currentTab + 1 + TABS.length) % TABS.length);
     } else if (key === "f5") {
       switchTab(_currentTab);
     }
@@ -68,80 +78,113 @@ export function exitDashboard() {
 export function switchTab(index) {
   if (index < 0 || index >= TABS.length) return;
   _currentTab = index;
-  renderScreen();
+  // Debounce: rapid key presses (e.g. holding arrow keys) should collapse into
+  // a single render so the screen does not tear or flash intermediate states.
+  if (_switchTimer) {
+    clearTimeout(_switchTimer);
+    _switchTimer = null;
+  }
+  _switchTimer = setTimeout(() => {
+    _switchTimer = null;
+    renderScreen();
+  }, 25);
 }
 
 export function getCurrentTab() {
   return TABS[_currentTab].id;
 }
 
-function renderScreen() {
+// ── Internal rendering ──
+
+async function renderScreen() {
+  const gen = ++_renderGen;
+
+  // term.clear() on the alternate screen (fullscreen) is a buffer swap and
+  // does not flicker — it simply replaces the visible content in one go.
   term.clear();
+
   drawHeader();
   drawTabBar();
-  drawContent();
+
+  // Position the cursor at the start of the content area so async panels
+  // cannot write to arbitrary locations on the screen.
+  term.moveTo(1, CONTENT_START);
+  await drawContent();
+
+  // If the user has switched tabs since we started, do not paint a stale footer.
+  if (gen !== _renderGen) return;
+
   drawFooter();
-}
 
-function drawHeader() {
-  const tab = TABS[_currentTab];
-  term[COLORS.headerBg]();
-  term.white("  ");
-  term.bold(" occier ");
-  term.white(" v2.0.0 ");
-  term.white("—  ");
-  term.bold(tab.label);
-  term.white(" ".repeat(Math.max(0, term.width - 35)));
-  term.styleReset();
-  term("\n");
-}
-
-function drawTabBar() {
-  term.bgGray();
-  term.white(" ");
-  for (let i = 0; i < TABS.length; i++) {
-    if (i === _currentTab) {
-      term[COLORS.selectedBg]();
-      term[COLORS.selectedFg](` ${TABS[i].label} `);
-      term.bgGray();
-      term.white(" ");
-    } else {
-      term.gray(` ${TABS[i].label} `);
-    }
-  }
-  term.styleReset();
-  term("\n\n");
-}
-
-function drawFooter() {
-  const y = term.height - 1;
-  term.moveTo(1, y);
-  term.bgGray();
-  term.white(" ←→ / Tab:Switch  ");
-  term.gray("F5:Refresh  ");
-  term.gray("q/Esc:Quit  ");
-  term.styleReset();
+  // Remove any leftover content below the footer from a previous larger panel.
+  try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
 }
 
 function drawContent() {
+  const modPath = MOD_MAP[TABS[_currentTab].id];
+  if (!modPath) return Promise.resolve();
+  return loadPanel(modPath);
+}
+
+function drawHeader() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
   const tab = TABS[_currentTab];
-  const modMap = {
-    dashboard: "./dashboard.mjs",
-    network: "./network.mjs",
-    vault: "./vault.mjs",
-    providers: "./provider.mjs",
-    tools: "./tools.mjs",
-    projects: "./projects.mjs",
-  };
-  const modPath = modMap[tab.id];
-  if (modPath) {
-    loadPanel(modPath);
+  term.styleReset();
+  term.bgBrightCyan();
+  term.bold();
+  term.white("  occier  ");
+  term.white(`v${VERSION} —  `);
+  term.bold();
+  term.white(tab.label);
+  const text = `  occier  v${VERSION} —  ${tab.label}`;
+  const pad = Math.max(0, w - text.length);
+  if (pad > 0) term.white(" ".repeat(pad));
+  term.styleReset();
+}
+
+function drawTabBar() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  term.styleReset();
+  term.bgGray();
+
+  // On narrow terminals (<73 cols) reduce inter-tab gap to save space.
+  const natural = TABS.reduce((acc, t) => acc + 2 + t.label.length + 2 + 1, 0);
+  const gap = w < natural ? " " : "  ";
+
+  for (let i = 0; i < TABS.length; i++) {
+    term.white(gap);
+    if (i === _currentTab) {
+      term.bgBrightWhite();
+      term.black(` ${TABS[i].label} `);
+      term.bgGray();
+    } else {
+      term.brightWhite(` ${TABS[i].label} `);
+    }
+    term.white(" ");
   }
+
+  // Fill rest of the row with bgGray
+  const consumed = TABS.reduce((acc, t) => acc + (w < natural ? 1 : 2) + 2 + t.label.length + 2 + 1, 0);
+  const pad = Math.max(0, w - consumed);
+  if (pad > 0) term.white(" ".repeat(pad));
+}
+
+function drawFooter() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  const h = Number.isFinite(term.height) ? term.height : 24;
+  term.moveTo(1, h);
+  term.styleReset();
+  term.bgGray();
+  term.brightCyan("  ←→ / Tab:Switch  ");
+  term.brightWhite("F5:Refresh  ");
+  term.brightWhite("q/Esc:Quit  ");
+  const text = "  ←→ / Tab:Switch  F5:Refresh  q/Esc:Quit  ";
+  const pad = Math.max(0, w - text.length);
+  if (pad > 0) term.white(" ".repeat(pad));
+  term.styleReset();
 }
 
 async function loadPanel(modPath) {
-  // Generation guard: if the user switches tabs while a panel is still
-  // fetching data, the stale panel must not draw onto the new screen.
   const gen = ++_renderGen;
   try {
     const mod = await import(modPath);
@@ -150,9 +193,14 @@ async function loadPanel(modPath) {
       await mod.renderPanel(term);
       return;
     }
+    term.styleReset();
+    term.bgBlack();
     term.red("  Panel module missing renderPanel export\n");
   } catch (err) {
     if (gen !== _renderGen) return;
+    term.styleReset();
+    term.bgBlack();
     term.red(`  Error loading panel: ${err.message}\n`);
   }
+  term.styleReset();
 }

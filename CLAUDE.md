@@ -596,6 +596,8 @@ Do not create commits unless explicitly asked.
 
 Never force-push, rewrite history, delete branches, or run destructive Git commands without explicit permission.
 
+Never create a Pull Request on GitHub without the user's explicit command. Merging, pushing tags, and publishing follow the same rule.
+
 Before completion, inspect the final diff.
 
 ---

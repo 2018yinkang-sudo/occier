@@ -1,4 +1,5 @@
 import { getToolStatus } from "../../services/tools.mjs";
+import { line, sectionHeader, contentMaxLines } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
 let _cache = null;
@@ -11,54 +12,65 @@ export async function renderPanel(term) {
   }
 
   const { claude, opencode, gh } = _cache;
-  const w = Math.min(64, term.width - 4);
   const pad = "  ";
+  let lines = 0;
+  const max = contentMaxLines(term);
 
-  drawSectionHeader(term, pad, w, "Development Tools");
+  function okLine() { lines++; if (lines >= max) return true; return false; }
 
-  drawTool(term, pad, "Claude Code", claude.installed, claude.version);
-  drawTool(term, pad, "OpenCode", opencode.installed, opencode.version);
+  sectionHeader(term, "Development Tools");
+  if (okLine()) return;
 
-  term("\n");
+  line(term,
+    { text: pad, fg: "white" },
+    { text: "●", fg: claude.installed ? "brightGreen" : "yellow" },
+    { text: "  Claude Code  ".padEnd(18), fg: "brightWhite" },
+    { text: claude.installed ? `installed  ${claude.version || ""}` : "not installed", fg: claude.installed ? "green" : "gray" },
+  );
+  if (okLine()) return;
 
-  drawSectionHeader(term, pad, w, "GitHub");
-  drawTool(term, pad, "GitHub CLI", gh.installed, gh.loggedIn ? "authenticated" : "not logged in");
+  line(term,
+    { text: pad, fg: "white" },
+    { text: "●", fg: opencode.installed ? "brightGreen" : "yellow" },
+    { text: "  OpenCode     ".padEnd(18), fg: "brightWhite" },
+    { text: opencode.installed ? `installed  ${opencode.version || ""}` : "not installed", fg: opencode.installed ? "green" : "gray" },
+  );
+  if (okLine()) return;
 
-  term("\n");
+  line(term, { text: "", fg: "white" });
+  if (okLine()) return;
 
-  term.gray(`${pad}Commands:\n`);
-  term(`${pad}  `);
-  term.cyan("occier tool install claude");
-  term("\n");
-  term(`${pad}  `);
-  term.cyan("occier tool install opencode");
-  term("\n");
-  term(`${pad}  `);
-  term.cyan("occier tool update claude");
-  term("\n");
-}
+  sectionHeader(term, "GitHub");
+  if (okLine()) return;
 
-function drawTool(term, pad, name, installed, detail) {
-  term(`${pad}`);
-  if (installed) term.brightGreen("●");
-  else term.yellow("○");
-  term(" ");
-  term.bold(name.padEnd(16));
-  if (installed) {
-    term.brightGreen("installed");
-    if (detail) {
-      term("  ");
-      term.gray(detail);
-    }
-  } else {
-    term.gray("not installed");
-  }
-  term("\n");
-}
+  line(term,
+    { text: pad, fg: "white" },
+    { text: "●", fg: gh.installed ? (gh.loggedIn ? "brightGreen" : "yellow") : "yellow" },
+    { text: "  GitHub CLI   ".padEnd(18), fg: "brightWhite" },
+    { text: gh.installed ? (gh.loggedIn ? "authenticated" : "not logged in") : "not installed", fg: gh.installed ? (gh.loggedIn ? "green" : "gray") : "gray" },
+  );
+  if (okLine()) return;
 
-function drawSectionHeader(term, pad, w, title) {
-  term(`${pad}`);
-  term.brightCyan("─ ");
-  term.bold(title);
-  term.gray(` ${"─".repeat(Math.max(0, w - title.length - 4))}\n`);
+  line(term, { text: "", fg: "white" });
+  if (okLine()) return;
+
+  line(term,
+    { text: `${pad}Commands:`, fg: "brightWhite" },
+  );
+  if (okLine()) return;
+  line(term,
+    { text: `${pad}  `, fg: "white" },
+    { text: "occier tool install claude", fg: "cyan" },
+  );
+  if (okLine()) return;
+  line(term,
+    { text: `${pad}  `, fg: "white" },
+    { text: "occier tool install opencode", fg: "cyan" },
+  );
+  if (okLine()) return;
+  line(term,
+    { text: `${pad}  `, fg: "white" },
+    { text: "occier tool update claude", fg: "cyan" },
+  );
+  term.styleReset();
 }

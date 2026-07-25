@@ -1,4 +1,5 @@
 import { getNetworkStatus } from "../../services/network.mjs";
+import { line, sectionHeader, contentMaxLines } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
 let _cache = null;
@@ -11,54 +12,66 @@ export async function renderPanel(term) {
   }
 
   const { platform, proxy, mirrors } = _cache;
-  const w = Math.min(64, term.width - 4);
   const pad = "  ";
+  let lines = 0;
+  const max = contentMaxLines(term);
+
+  function okLine() { lines++; if (lines >= max) return true; return false; }
 
   // ── Platform ──
-  drawSectionHeader(term, pad, w, "Platform");
-  term(`${pad}`);
-  term.bold("OS:".padEnd(14));
-  term.gray(platform.os || "unknown");
-  if (platform.isWSL) {
-    term.gray("  WSL mode: ");
-    term.yellow(platform.wslMode || "unknown");
-  }
-  term("\n");
+  sectionHeader(term, "Platform");
+  if (okLine()) return;
 
-  term("\n");
+  line(term,
+    { text: `${pad}OS: `.padEnd(18), fg: "brightWhite" },
+    { text: platform.os || "unknown", fg: "white" },
+  );
+  if (okLine()) return;
+
+  if (platform.isWSL) {
+    line(term,
+      { text: `${pad}WSL mode: `.padEnd(18), fg: "brightWhite" },
+      { text: platform.wslMode || "unknown", fg: platform.wslMode === "mirrored" ? "green" : "yellow" },
+    );
+    if (okLine()) return;
+  }
+
+  line(term, { text: "", fg: "white" });
+  if (okLine()) return;
 
   // ── Proxy ──
-  drawSectionHeader(term, pad, w, "Proxy Configuration");
+  sectionHeader(term, "Proxy Configuration");
+  if (okLine()) return;
+
   if (!proxy || Object.keys(proxy).length === 0) {
-    term.gray(`${pad}No proxy configured\n`);
+    line(term, { text: `${pad}No proxy configured`, fg: "gray" });
+    if (okLine()) return;
   } else {
     for (const [k, v] of Object.entries(proxy)) {
-      term(`${pad}`);
-      term.bold(k.padEnd(15));
-      if (v) term.brightGreen(v);
-      else term.gray("not set");
-      term("\n");
+      line(term,
+        { text: `${pad}${k.padEnd(15)}`, fg: "brightWhite" },
+        { text: v || "not set", fg: v ? "brightGreen" : "gray" },
+      );
+      if (okLine()) break;
     }
   }
 
-  term("\n");
+  line(term, { text: "", fg: "white" });
+  if (okLine()) return;
 
   // ── Mirrors ──
-  drawSectionHeader(term, pad, w, "Mirrors");
-  for (const m of mirrors || []) {
-    term(`${pad}`);
-    if (m.enabled) term.brightGreen("●");
-    else term.gray("○");
-    term(" ");
-    term.bold(m.id.padEnd(18));
-    term.gray(m.baseUrl);
-    term("\n");
-  }
-}
+  sectionHeader(term, "Mirrors");
+  if (okLine()) return;
 
-function drawSectionHeader(term, pad, w, title) {
-  term(`${pad}`);
-  term.brightCyan("─ ");
-  term.bold(title);
-  term.gray(` ${"─".repeat(Math.max(0, w - title.length - 4))}\n`);
+  for (const m of mirrors || []) {
+    const url = m.baseUrl.length > 50 ? `${m.baseUrl.slice(0, 47)}...` : m.baseUrl;
+    line(term,
+      { text: `${pad}`, fg: "white" },
+      { text: "● ", fg: m.enabled ? "brightGreen" : "gray" },
+      { text: m.id.padEnd(18), fg: "brightWhite" },
+      { text: url, fg: "gray" },
+    );
+    if (okLine()) break;
+  }
+  term.styleReset();
 }

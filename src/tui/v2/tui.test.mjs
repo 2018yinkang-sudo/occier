@@ -5,6 +5,7 @@ import { renderPanel as vaultPanel } from "./vault.mjs";
 import { renderPanel as providerPanel } from "./provider.mjs";
 import { renderPanel as toolsPanel } from "./tools.mjs";
 import { renderPanel as projectsPanel } from "./projects.mjs";
+import { line, sectionHeader } from "./panel-utils.mjs";
 
 function createMockTerm() {
   const lines = [];
@@ -19,10 +20,12 @@ function createMockTerm() {
   term.clear = () => { lines.length = 0; };
   term.height = 24;
   term.width = 80;
+  term.eraseDisplayAfter = () => {};
 
   const props = [
     "bold", "italic", "underline", "dim", "brightCyan", "brightGreen", "brightYellow", "brightRed", "brightBlue",
-    "gray", "cyan", "green", "yellow", "red", "blue", "white", "black", "bgGray", "bgBlack", "bgBrightCyan",
+    "gray", "cyan", "green", "yellow", "red", "blue", "white", "black", "brightWhite",
+    "bgGray", "bgBlack", "bgBrightCyan",
     "bgBrightWhite", "bgBrightRed", "styleReset", "noFormat",
   ];
 
@@ -39,7 +42,7 @@ function createMockTerm() {
 describe("TUI panels", () => {
   it("dashboard panel renders without error", async () => {
     const { term, lines } = createMockTerm();
-    await dashboardPanel(term, null);
+    await dashboardPanel(term);
     const output = lines.join("");
     expect(output).toContain("System Status");
     expect(output).toContain("Providers");
@@ -48,7 +51,7 @@ describe("TUI panels", () => {
 
   it("network panel renders without error", async () => {
     const { term, lines } = createMockTerm();
-    await networkPanel(term, null);
+    await networkPanel(term);
     const output = lines.join("");
     expect(output).toContain("Platform");
     expect(output).toContain("Proxy");
@@ -57,7 +60,7 @@ describe("TUI panels", () => {
 
   it("vault panel renders without error", async () => {
     const { term, lines } = createMockTerm();
-    await vaultPanel(term, null);
+    await vaultPanel(term);
     const output = lines.join("");
     expect(output).toContain("Credential Vault");
     expect(output).toContain("credentials");
@@ -65,7 +68,7 @@ describe("TUI panels", () => {
 
   it("provider panel renders without error", async () => {
     const { term, lines } = createMockTerm();
-    await providerPanel(term, null);
+    await providerPanel(term);
     const output = lines.join("");
     expect(output).toContain("Providers");
     expect(output).toContain("Available");
@@ -73,7 +76,7 @@ describe("TUI panels", () => {
 
   it("tools panel renders without error", async () => {
     const { term, lines } = createMockTerm();
-    await toolsPanel(term, null);
+    await toolsPanel(term);
     const output = lines.join("");
     expect(output).toContain("Development Tools");
     expect(output).toContain("Claude Code");
@@ -82,16 +85,35 @@ describe("TUI panels", () => {
 
   it("projects panel renders without error", async () => {
     const { term, lines } = createMockTerm();
-    await projectsPanel(term, null);
+    await projectsPanel(term);
     const output = lines.join("");
     expect(output).toContain("Projects");
   });
 
-  // Regression: panels used to accept a refreshFn and call it on completion,
-  // causing an infinite render loop (render → refresh → render → ...).
-  it("panels take only (term) — no refresh callback exists", () => {
+  it("panels take exactly one argument (no refreshFn)", () => {
     for (const panel of [dashboardPanel, networkPanel, vaultPanel, providerPanel, toolsPanel, projectsPanel]) {
       expect(panel.length).toBe(1);
     }
+  });
+});
+
+describe("panel-utils", () => {
+  it("line() resets style and writes segments", () => {
+    const { term, lines } = createMockTerm();
+    line(term,
+      { text: "  ", fg: "white" },
+      { text: "●", fg: "brightGreen", bold: true },
+      { text: "  label", fg: "brightWhite" },
+    );
+    const joined = lines.join("");
+    expect(joined).toContain("label");
+  });
+
+  it("sectionHeader writes a cyan line with title", () => {
+    const { term, lines } = createMockTerm();
+    sectionHeader(term, "Test Section");
+    const joined = lines.join("");
+    expect(joined).toContain("─");
+    expect(joined).toContain("Test Section");
   });
 });
