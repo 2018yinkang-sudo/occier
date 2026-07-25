@@ -7,7 +7,7 @@ export const CONTENT_START = 4;
 
 export function contentMaxLines(term) {
   const h = Number.isFinite(term.height) ? term.height : 24;
-  return Math.max(1, h - 4);
+  return Math.max(1, h - 5); // header + tabbar + spacer + statusline + footer
 }
 
 export function line(term, ...parts) {

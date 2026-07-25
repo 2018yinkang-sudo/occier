@@ -1,13 +1,13 @@
 // Design tokens for TUI v3.
-// Phase 1 intentionally keeps the v2 color palette so the visible UI does not
-// change while we refactor the architecture. Later phases will evolve the
-// grammar (selectable markers, bordered modal, etc.).
+// Phase 3 evolves the color grammar: selectable markers, bordered modal, and
+// differentiated status colours (green=success, red=error, cyan=info).
 
 export const theme = {
   chrome: {
-    header:     { bg: "bgBrightCyan", fg: "black" },
-    tabBar:     { bg: "bgGray",       fg: "brightCyan", activeBg: "bgBrightWhite", activeFg: "black" },
-    footer:     { bg: "bgGray",       fg: "brightCyan" },
+    header:      { bg: "bgBrightCyan", fg: "black" },
+    tabBar:      { bg: "bgGray", fg: "brightCyan", activeBg: "bgBrightWhite", activeFg: "black" },
+    statusLine:  { bg: "bgBlack" },
+    footer:      { bg: "bgGray", fg: "brightCyan" },
   },
   content: {
     sectionHeader: { fg: "brightCyan", marker: "─ " },
@@ -16,20 +16,23 @@ export const theme = {
   },
   item: {
     bullet:        "●",
-    // Phase 1: selectable rows are visually identical to non-selectable rows,
-    // matching v2 behavior. Phase 2 will introduce visible markers.
     selectable:    { fg: "brightWhite" },
     focused:       { bg: "bgBrightWhite", fg: "black" },
   },
   status: {
-    // Phase 1: keep v2 single brightCyan footer.
-    info:    { fg: "brightCyan", duration: 2000 },
-    success: { fg: "brightCyan", duration: 2000 },
-    error:   { fg: "brightCyan", duration: 2000 },
+    info:    { fg: "brightCyan",  icon: "ℹ", duration: 2500 },
+    success: { fg: "brightGreen", icon: "✓", duration: 2500 },
+    error:   { fg: "brightRed",   icon: "✗", duration: 5000 },
   },
   state: {
     ok:    { bulletFg: "brightGreen" },
     warn:  { bulletFg: "yellow" },
     error: { bulletFg: "brightRed" },
+  },
+  modal: {
+    border: { fg: "brightCyan", h: "─", v: "│", tl: "┌", tr: "┐", bl: "└", br: "┘" },
+    title:  { bg: "bgBrightCyan", fg: "black" },
+    body:   { bg: "bgBlack", fg: "white" },
+    hint:   { fg: "gray" },
   },
 };

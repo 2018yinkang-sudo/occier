@@ -90,6 +90,10 @@ export function exitDashboard() {
 }
 
 export function switchTab(index) {
+  switchTabAbsolute(index);
+}
+
+function switchTabAbsolute(index) {
   if (index < 0 || index >= TABS.length) return;
   _state.currentTab = index;
   if (_switchTimer) {
@@ -114,7 +118,12 @@ function makeCtx() {
     term,
     currentTabId,
     setMode,
-    switchTab,
+    tabCount: TABS.length,
+    switchTab: (delta) => {
+      const next = (_state.currentTab + delta + TABS.length) % TABS.length;
+      switchTabAbsolute(next);
+    },
+    jumpToTab: (index) => switchTabAbsolute(index),
     scrollContent,
     scrollPage: (deltaPages) => scrollContent(deltaPages * contentMaxLines(term)),
     scrollTo: (offset) => scrollContentTo(offset),
@@ -161,6 +170,7 @@ async function renderScreen() {
     drawInputModal();
   } else {
     term.hideCursor();
+    drawStatusLine();
     drawFooter();
     try { term.eraseDisplayAfter(); } catch { /* non-TTY: skip */ }
   }
@@ -188,6 +198,7 @@ function drawTabBar() {
   term[theme.chrome.tabBar.bg]();
 
   const gap = w < 60 ? " " : "  ";
+  let consumed = 0;
   for (let i = 0; i < TABS.length; i++) {
     const tab = TABS[i];
     const isActive = i === _state.currentTab;
@@ -198,12 +209,23 @@ function drawTabBar() {
       term[theme.chrome.tabBar.bg]();
       term[theme.chrome.tabBar.fg]();
     }
-    term(`${gap}${tab.label}${gap}`);
+    // Build label with optional badge
+    const mod = _loadedPanels[MOD_MAP[tab.id]];
+    let label = tab.label;
+    if (mod && typeof mod.getTabSummary === "function") {
+      try {
+        const summary = mod.getTabSummary();
+        if (summary && summary.count > 0) {
+          label = `${tab.label}(${summary.count})`;
+        }
+      } catch { /* ignore errors from getTabSummary */ }
+    }
+    const cell = `${gap}${label}${gap}`;
+    term(cell);
+    consumed += cell.length;
   }
 
   // Fill remaining width so the whole tab-bar row has a consistent background.
-  const gapLen = gap.length * 2;
-  const consumed = TABS.reduce((acc, t) => acc + gapLen + t.label.length, 0);
   const pad = Math.max(0, w - consumed);
   if (pad > 0) {
     term[theme.chrome.tabBar.bg]();
@@ -219,18 +241,34 @@ function drawFooter() {
   term.styleReset();
   term[theme.chrome.footer.bg]();
 
-  let text;
-  if (_state.status) {
-    text = `  ${_state.status.message}  `;
-  } else if (_state.actionInFlight) {
-    text = "  ⏳ Working…  ";
-  } else {
-    text = "  ↑↓ Move · Enter Action · ←→ Tab · PgUp/PgDn Scroll · Home/End · F5 Refresh · q Quit  ";
-  }
+  const text = "  ↑↓ Move · Enter Action · ←→ Tab · PgUp/PgDn · Home/End · F5 Refresh · q Quit  ";
 
   term[theme.chrome.footer.fg](text);
   const pad = Math.max(0, w - text.length);
   if (pad > 0) term.white(" ".repeat(pad));
+  term.styleReset();
+}
+
+function drawStatusLine() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  const h = Number.isFinite(term.height) ? term.height : 24;
+  term.moveTo(1, h - 1);
+  term.styleReset();
+  term[theme.chrome.statusLine.bg]();
+
+  const st = _state.status;
+  if (st) {
+    const spec = theme.status[st.kind] || theme.status.info;
+    const prefix = `${spec.icon} `;
+    const maxMsg = w - prefix.length - 2;
+    const msg = st.message.length > maxMsg ? st.message.slice(0, maxMsg) : st.message;
+    term[spec.fg](`  ${prefix}${msg}`);
+    const used = prefix.length + msg.length + 2;
+    const pad = Math.max(0, w - used);
+    if (pad > 0) term.black(" ".repeat(pad));
+  } else {
+    term.black(" ".repeat(w));
+  }
   term.styleReset();
 }
 
@@ -239,25 +277,66 @@ function drawInputModal() {
   const { title, prompt, password } = spec;
   const w = Number.isFinite(term.width) ? term.width : 80;
   const h = Number.isFinite(term.height) ? term.height : 24;
-  const row = Math.floor(h / 2);
-  const display = password ? "*".repeat(_state.input.buffer.length) : _state.input.buffer;
+  const boxWidth = Math.min(62, w - 4);
+  const boxHeight = 5; // top border + title + input + hint + bottom border
+  const row = Math.floor((h - boxHeight) / 2);
+  const col = Math.floor((w - boxWidth) / 2) + 1;
+  const inner = boxWidth - 2;
+  const display = password ? "•".repeat(_state.input.buffer.length) : _state.input.buffer;
 
-  term.moveTo(1, row);
+  // ── Top border with title ──
+  const titleText = ` ${title} `;
+  const rightDash = Math.max(0, boxWidth - 2 - titleText.length);
+  term.moveTo(col, row);
   term.styleReset();
-  term.bgGray();
-  term.brightWhite(title);
-  term("\n");
-  term.bgGray();
-  term.white(prompt);
-  term.styleReset();
-  term.bgBlack();
-  term.white(display);
-  const pad = Math.max(0, w - prompt.length - display.length);
-  if (pad > 0) term.black(" ".repeat(pad));
-  term.styleReset();
+  term[theme.modal.border.fg](
+    theme.modal.border.tl +
+    titleText +
+    theme.modal.border.h.repeat(rightDash) +
+    theme.modal.border.tr,
+  );
 
-  const col = Math.min(prompt.length + _state.input.cursor, w - 1) + 1;
+  // ── Input field with horizontal scroll ──
+  const fieldWidth = inner - prompt.length - 2;
+  let scrollStart = 0;
+  if (display.length > fieldWidth) {
+    scrollStart = Math.max(0, _state.input.cursor - Math.floor(fieldWidth / 2));
+    if (scrollStart + fieldWidth > display.length) scrollStart = display.length - fieldWidth;
+    if (scrollStart < 0) scrollStart = 0;
+  }
+  const visibleDisplay = display.slice(scrollStart, scrollStart + fieldWidth);
+  const displayPad = fieldWidth - visibleDisplay.length;
+  const cursorCol = col + 1 + prompt.length + (_state.input.cursor - scrollStart);
+
   term.moveTo(col, row + 1);
+  term[theme.modal.border.fg](theme.modal.border.v);
+  term[theme.modal.body.bg]();
+  term[theme.modal.body.fg](prompt + visibleDisplay);
+  if (displayPad > 0) term.black(" ".repeat(displayPad));
+  term[theme.modal.border.fg](theme.modal.border.v);
+
+  // ── Hint / error line ──
+  term.moveTo(col, row + 2);
+  term[theme.modal.border.fg](theme.modal.border.v);
+  term[theme.modal.body.bg]();
+  if (_state.input.error) {
+    term.red(` ${_state.input.error}`.slice(0, inner));
+    term.black(" ".repeat(Math.max(0, inner - 2 - _state.input.error.length)));
+  } else {
+    term[theme.modal.hint.fg](" Enter submit · Esc cancel ".padEnd(inner));
+  }
+  term[theme.modal.border.fg](theme.modal.border.v);
+
+  // ── Bottom border ──
+  term.moveTo(col, row + 3);
+  term[theme.modal.border.fg](
+    theme.modal.border.bl +
+    theme.modal.border.h.repeat(boxWidth - 2) +
+    theme.modal.border.br,
+  );
+
+  // Position cursor inside the input field
+  term.moveTo(cursorCol + 1, row + 1);
   term.hideCursor(false);
 }
 
@@ -406,9 +485,12 @@ async function invokeAction(itemId) {
       return;
     }
 
-    if (result) showStatus(result);
+    if (result) {
+      const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
+      showStatus(result, kind);
+    }
   } catch (err) {
-    showStatus(`Error: ${err.message}`);
+    showStatus(`Error: ${err.message}`, "error");
   } finally {
     _state.actionInFlight = false;
     renderScreen();
@@ -421,19 +503,24 @@ async function submitInput() {
   _state.input = null;
   _state.mode = "focus";
 
-  let message = null;
-  if (typeof continueFn === "function") {
-    try {
-      message = await continueFn(value);
-    } catch (err) {
-      message = `Error: ${err.message}`;
-    }
-  }
-
-  if (message) {
-    showStatus(message);
-  } else {
+  if (typeof continueFn !== "function") {
     renderScreen();
+    return;
+  }
+  try {
+    const result = await continueFn(value);
+    if (result && typeof result === "object" && result.input) {
+      // Chain to a new input modal (multi-step flow)
+      _state.input = { spec: result.input, buffer: "", cursor: 0, error: null, continue: result.continue };
+      setMode("input");
+      return;
+    }
+    if (result) {
+      const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
+      showStatus(result, kind);
+    }
+  } catch (err) {
+    showStatus(`Error: ${err.message}`, "error");
   }
 }
 
@@ -444,7 +531,10 @@ function cancelInput() {
 
 // ── Status ──
 
-function showStatus(message, kind = "info") {
+function showStatus(message, kind = null) {
+  if (!kind) {
+    kind = typeof message === "string" && message.startsWith("Error:") ? "error" : "success";
+  }
   _state.status = { message, kind, ts: Date.now() };
   _state.statusHistory.push(_state.status);
   if (_state.statusHistory.length > 50) _state.statusHistory.shift();
@@ -453,7 +543,7 @@ function showStatus(message, kind = "info") {
     clearTimeout(_statusTimer);
     _statusTimer = null;
   }
-  const duration = theme.status[kind]?.duration ?? 2000;
+  const duration = (theme.status[kind] || theme.status.info).duration;
   _statusTimer = setTimeout(() => {
     _statusTimer = null;
     _state.status = null;

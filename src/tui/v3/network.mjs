@@ -78,6 +78,11 @@ export async function renderPanel(term, state, budget) {
   term.styleReset();
 }
 
+export function getTabSummary() {
+  if (!_cache) return null;
+  return { count: (_cache.mirrors || []).length };
+}
+
 export async function handleAction(_term, itemId) {
   if (!_cache) return null;
   const mirror = (_cache.mirrors || []).find((m) => m.id === itemId);

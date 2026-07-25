@@ -70,6 +70,12 @@ export async function renderPanel(term, state, budget) {
   term.styleReset();
 }
 
+export function getTabSummary() {
+  if (!_cache) return null;
+  const configured = _cache.filter((p) => p.configured);
+  return { count: configured.length };
+}
+
 export async function handleAction(_term, itemId) {
   if (!_cache) return null;
   const p = _cache.find((x) => x.id === itemId);

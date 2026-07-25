@@ -1,4 +1,4 @@
-import { listCredentials, removeCredential } from "../../services/vault.mjs";
+import { listCredentials, removeCredential, setCredential } from "../../services/vault.mjs";
 import { line, selectedLine, sectionHeader } from "../v3/panel-utils.mjs";
 
 let _lastUpdate = 0;
@@ -25,14 +25,9 @@ export async function renderPanel(term, state, budget) {
   if (budget.okLine()) return;
 
   if (_cache.count === 0) {
-    line(term,
-      { text: `${pad}No credentials stored`, fg: "gray" },
-    );
-    if (budget.okLine()) return;
-    line(term,
-      { text: `${pad}Run `, fg: "gray" },
-      { text: "occier vault set", fg: "cyan" },
-      { text: " to add one", fg: "gray" },
+    budget.tag("add-credential", "Add credential");
+    draw("add-credential",
+      { text: `${pad}No credentials — press Enter to add one`, fg: "yellow" },
     );
     if (budget.okLine()) return;
   } else {
@@ -64,8 +59,45 @@ export async function renderPanel(term, state, budget) {
   term.styleReset();
 }
 
+export function getTabSummary() {
+  if (!_cache) return null;
+  return { count: _cache.count };
+}
+
 export async function handleAction(_term, itemId) {
   if (!_cache) return null;
+
+  if (itemId === "add-credential") {
+    return {
+      input: {
+        title: "Add Credential",
+        prompt: "Key name: ",
+      },
+      async continue(keyName) {
+        if (!keyName || !keyName.trim()) return "Cancelled";
+        const k = keyName.trim();
+        return {
+          input: {
+            title: `Value for ${k}`,
+            prompt: "Value: ",
+            password: true,
+          },
+          async continue(value) {
+            if (!value) return "Cancelled";
+            try {
+              const result = await setCredential(k, value);
+              _lastUpdate = 0;
+              if (result.ok) return `${k} added`;
+              return `Error: ${result.error}`;
+            } catch (err) {
+              return `Error: ${err.message}`;
+            }
+          },
+        };
+      },
+    };
+  }
+
   const cred = _cache.credentials.find((c) => c.key === itemId);
   if (!cred) return null;
 
