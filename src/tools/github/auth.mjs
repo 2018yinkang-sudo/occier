@@ -81,12 +81,19 @@ export async function testGitHubAuthAll() {
   }
   const pat = await getGitHubPAT();
   if (pat) {
-    const r = await runString("curl", [
-      "-s", "-o", "/dev/null", "-w", "%{http_code}",
-      "-H", `Authorization: token ${pat.slice(0, 4)}***${pat.slice(-4)}`,
-      "https://api.github.com/user",
-    ], { timeout: 8000 });
-    results.pat = r.exitCode === 0 && (r.stdout === "200" || r.stdout === "401");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch("https://api.github.com/user", {
+        headers: { Authorization: `token ${pat}` },
+        signal: controller.signal,
+      });
+      results.pat = res.status === 200;
+    } catch {
+      results.pat = false;
+    } finally {
+      clearTimeout(timer);
+    }
   }
   return results;
 }

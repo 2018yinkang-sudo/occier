@@ -1,3 +1,13 @@
+import { join } from "path";
+import { homedir } from "os";
+import { readFile, writeFile, mkdir } from "fs/promises";
+
+const MIRROR_STATE_FILE = join(
+  process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
+  "occier",
+  "mirrors.json",
+);
+
 const BUILTIN_MIRRORS = [
   { id: "npm-aliyun", scope: "npm", baseUrl: "https://registry.npmmirror.com", region: "cn", official: false, enabled: false },
   { id: "npm-official", scope: "npm", baseUrl: "https://registry.npmjs.org", region: "global", official: true, enabled: true },
@@ -15,6 +25,35 @@ for (const m of BUILTIN_MIRRORS) {
   _internal.set(m.id, { ...m });
 }
 
+async function loadMirrorState() {
+  try {
+    const raw = await readFile(MIRROR_STATE_FILE, "utf-8");
+    const state = JSON.parse(raw);
+    for (const [id, enabled] of Object.entries(state)) {
+      const m = _internal.get(id);
+      if (m) m.enabled = enabled;
+    }
+  } catch { /* no persisted state yet */ }
+}
+
+async function saveMirrorState() {
+  const state = {};
+  for (const [id, m] of _internal) {
+    state[id] = m.enabled;
+  }
+  await mkdir(join(MIRROR_STATE_FILE, ".."), { recursive: true, mode: 0o700 });
+  await writeFile(MIRROR_STATE_FILE, JSON.stringify(state, null, 2), { mode: 0o600 });
+}
+
+let _loaded = false;
+
+async function ensureLoaded() {
+  if (!_loaded) {
+    _loaded = true;
+    await loadMirrorState();
+  }
+}
+
 export function getMirror(id) {
   const m = _internal.get(id);
   if (!m) throw new Error(`Unknown mirror: ${id}`);
@@ -25,24 +64,30 @@ export function getMirrorSafe(id) {
   return _internal.get(id) ?? null;
 }
 
-export function allMirrors() {
+export async function allMirrors() {
+  await ensureLoaded();
   return Array.from(_internal.values());
 }
 
-export function mirrorsByScope(scope) {
-  return allMirrors().filter((m) => m.scope === scope);
+export async function mirrorsByScope(scope) {
+  await ensureLoaded();
+  return (await allMirrors()).filter((m) => m.scope === scope);
 }
 
-export function enableMirror(id) {
+export async function enableMirror(id) {
+  await ensureLoaded();
   const m = _internal.get(id);
   if (!m) return false;
   m.enabled = true;
+  await saveMirrorState();
   return true;
 }
 
-export function disableMirror(id) {
+export async function disableMirror(id) {
+  await ensureLoaded();
   const m = _internal.get(id);
   if (!m) return false;
   m.enabled = false;
+  await saveMirrorState();
   return true;
 }

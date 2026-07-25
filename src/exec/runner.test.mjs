@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitize, runString } from "./runner.mjs";
+import { sanitize, runString, hasCommand } from "./runner.mjs";
 
 describe("sanitize", () => {
   it("passes through normal text", () => {
@@ -25,6 +25,21 @@ describe("sanitize", () => {
   it("masks password in JSON-like format", () => {
     const result = sanitize('"password": "super-secret-123"');
     expect(result).not.toContain("super-secret-123");
+  });
+
+  it("masks api keys in JSON key/value format", () => {
+    const result = sanitize('{"apiKey":"sk-json-secret-999"}');
+    expect(result).not.toContain("sk-json-secret-999");
+  });
+});
+
+describe("hasCommand", () => {
+  it("finds an installed command", async () => {
+    expect(await hasCommand("sh")).toBe(true);
+  });
+
+  it("returns false for a missing command", async () => {
+    expect(await hasCommand("occier-nonexistent-cmd-xyz")).toBe(false);
   });
 });
 

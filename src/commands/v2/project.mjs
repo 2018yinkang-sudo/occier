@@ -1,5 +1,5 @@
 import { input, select } from '@inquirer/prompts';
-import { c, ok, warn } from '../tui.mjs';
+import { c, ok, warn } from '../../tui.mjs';
 import { run } from '../../exec/runner.mjs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -45,8 +45,13 @@ export async function projectCreate() {
   let projects = {};
   try {
     await access(projectsPath, constants.R_OK);
-    projects = JSON.parse(await readFile(projectsPath, 'utf-8'));
-  } catch { /* no existing projects */ }
+    const raw = await readFile(projectsPath, 'utf-8');
+    try {
+      projects = JSON.parse(raw);
+    } catch {
+      console.log(`\n  ${c.yellow('!')} projects.json is corrupted — creating new one\n`);
+    }
+  } catch { /* no existing projects file */ }
 
   projects[name.trim()] = {
     path: dir,
@@ -81,7 +86,14 @@ export async function projectOpen() {
     return;
   }
 
-  const projects = JSON.parse(await readFile(projectsPath, 'utf-8'));
+  let projects;
+  try {
+    projects = JSON.parse(await readFile(projectsPath, 'utf-8'));
+  } catch {
+    console.log(`\n  ${c.red('Error:')} Failed to read projects.json — file may be corrupted\n`);
+    return;
+  }
+
   const names = Object.keys(projects);
 
   if (names.length === 0) {

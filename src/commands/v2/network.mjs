@@ -1,18 +1,18 @@
-import { c, ok, warn, fail, info, divider } from '../tui.mjs';
+import { c, ok, warn, fail, info, divider } from '../../tui.mjs';
 import { detectCapabilities } from '../../env/detect.mjs';
 import { readConfig, writeConfig } from '../../schema/config.mjs';
-import { detectExistingProxy, COMMON_PORTS, buildProxyEnv, buildShellRcBlock, injectShellRc } from '../../network/proxy.mjs';
+import { detectExistingProxy, buildProxyEnv, buildShellRcBlock, injectShellRc } from '../../network/proxy.mjs';
 import { detectWslNetworkMode, buildWslConfig } from '../../network/wsl.mjs';
 import { checkAll as checkConnectivity } from '../../network/connectivity.mjs';
 import { allMirrors } from '../../mirrors/registry.mjs';
+import { join } from 'path';
+import { homedir } from 'os';
+import { accessSync, R_OK } from 'fs';
 
-async function getRcPath() {
-  const { join } = await import('path');
-  const { homedir } = await import('os');
+function getRcPath() {
   const candidates = ['.bashrc', '.zshrc', '.profile'];
   for (const name of candidates) {
     try {
-      const { accessSync, R_OK } = await import('fs');
       accessSync(join(homedir(), name), R_OK);
       return join(homedir(), name);
     } catch { /* rc not found */ }
@@ -55,7 +55,7 @@ export async function showNetworkStatus() {
 
   console.log(``);
   console.log(`  ${c.boldCyan('Mirrors')}`);
-  for (const m of allMirrors()) {
+  for (const m of await allMirrors()) {
     const status = m.enabled ? c.green('enabled') : c.gray('disabled');
     console.log(`    ${m.id.padEnd(20)} ${status} ${c.gray(m.baseUrl)}`);
   }
@@ -91,8 +91,6 @@ export async function configureNetwork() {
   console.log(`  ${c.boldCyan('Proxy')}`);
   const proxy = detectExistingProxy();
   console.log(`    Detected proxy: ${proxy.http_proxy || c.gray('none')}`);
-  console.log(`    Scanning common ports: ${COMMON_PORTS.join(', ')}`);
-  info('Port scanning requires net access; run "occier network test" for connectivity.');
 
   const config = await readConfig();
   config.networkConfigured = true;
@@ -125,11 +123,6 @@ export async function testNetwork() {
     console.log(`    HTTP:      ${r.http.pass ? c.green(`${r.http.code} (${r.http.ms}ms)`) : c.red(`${r.http.error || r.http.code}`)}`);
     console.log(``);
   }
-
-  console.log(`  ${c.boldCyan('Port Scan')}`);
-  info('To check proxy ports, ensure node:net is available:');
-  console.log(`    ${c.cyan('occier doctor')}`);
-  console.log(``);
 
   divider();
   console.log(``);
@@ -210,7 +203,7 @@ export async function showMirrors() {
   console.log(`  ${c.boldWhite('Mirror Registry')}`);
   console.log(``);
 
-  for (const m of allMirrors()) {
+  for (const m of await allMirrors()) {
     const status = m.enabled ? c.green('●') : c.gray('○');
     const official = m.official ? c.gray('(official)') : c.yellow('(mirror)');
     console.log(`  ${status} ${m.id.padEnd(20)} ${official} ${c.gray(m.baseUrl)}`);

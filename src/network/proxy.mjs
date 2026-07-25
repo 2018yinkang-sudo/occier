@@ -48,7 +48,9 @@ export async function detectProxyType(host = "127.0.0.1", port) {
 }
 
 export function buildProxyEnv(protocol, host, port, username, password) {
-  const auth = username && password ? `${username}:${password}@` : "";
+  const auth = username && password
+    ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
+    : "";
   let url;
   if (protocol === "http" || protocol === "https") {
     url = `http://${auth}${host}:${port}`;
@@ -69,13 +71,17 @@ export function buildProxyEnv(protocol, host, port, username, password) {
 
 export function buildShellRcBlock(protocol, host, port, username, password) {
   const env = buildProxyEnv(protocol, host, port, username, password);
+  const safeUrl = env.all_proxy.replace(/[$`\\"!]/g, "\\$&");
+  const safeHttpUrl = env.http_proxy.replace(/[$`\\"!]/g, "\\$&");
+  const safeHost = String(host).replace(/[$`\\"!]/g, "\\$&");
+  const safePort = String(port).replace(/[$`\\"!]/g, "\\$&");
   const lines = [
     SHELL_MARKER_START,
     `# Proxy configured by occier`,
-    `host_proxy="${host}"`,
-    `proxy_port="${port}"`,
-    `proxy_url="${env.all_proxy}"`,
-    `proxy_http_url="${env.http_proxy}"`,
+    `host_proxy="${safeHost}"`,
+    `proxy_port="${safePort}"`,
+    `proxy_url="${safeUrl}"`,
+    `proxy_http_url="${safeHttpUrl}"`,
     "",
     `proxy_on() {`,
     `  export http_proxy="\${proxy_http_url}"`,
@@ -112,15 +118,25 @@ export async function injectShellRc(rcPath, block) {
   const startIdx = content.indexOf(SHELL_MARKER_START);
   const endIdx = content.indexOf(SHELL_MARKER_END);
 
-  if (startIdx !== -1 && endIdx !== -1) {
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
     const before = content.slice(0, startIdx);
     const after = content.slice(endIdx + SHELL_MARKER_END.length);
     content = before + block + "\n" + after;
   } else if (startIdx !== -1) {
+    // Start marker without a matching end marker (user edited the file).
+    // Remove only the dangling marker line — never truncate the rest.
+    const lineEnd = content.indexOf("\n", startIdx);
     const before = content.slice(0, startIdx);
-    content = before + block + "\n";
+    const after = lineEnd === -1 ? "" : content.slice(lineEnd + 1);
+    content = before + after.trimStart() + "\n" + block + "\n";
   } else {
     content = content.trimEnd() + "\n\n" + block + "\n";
+  }
+
+  // Back up the rc file before modifying it (best-effort).
+  if (content !== "") {
+    const { copyFile } = await import("fs/promises");
+    await copyFile(rcPath, `${rcPath}.occier-bak`).catch(() => {});
   }
 
   await writeFile(rcPath, content);
@@ -162,9 +178,15 @@ export async function unsetGitProxy() {
 }
 
 export async function configureNpmProxy(protocol, host, port) {
+  // npm/pip only support HTTP(S) proxies — a socks5 URL would be silently broken.
+  if (protocol !== "http" && protocol !== "https") {
+    process.stderr.write("  \x1b[33m⚠\x1b[0m  npm does not support socks5 proxies — skipped.\n");
+    return false;
+  }
   const url = `http://${host}:${port}`;
   await runString("npm", ["config", "set", "proxy", url], { timeout: 5000 });
   await runString("npm", ["config", "set", "https-proxy", url], { timeout: 5000 });
+  return true;
 }
 
 export async function unsetNpmProxy() {

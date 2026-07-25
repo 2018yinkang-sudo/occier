@@ -35,27 +35,3 @@ export async function updateClaude() {
     error: r.exitCode !== 0 ? r.stderr : null,
   };
 }
-
-export function buildClaudeEnv(providerEnvVars) {
-  const env = { ...process.env };
-
-  const clearKeys = [
-    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
-    "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL",
-    "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_EFFORT_LEVEL",
-    "CLAUDE_CODE_AUTO_COMPACT_WINDOW", "ENABLE_TOOL_SEARCH",
-  ];
-
-  for (const k of clearKeys) {
-    delete env[k];
-  }
-
-  for (const [k, v] of Object.entries(providerEnvVars)) {
-    if (v !== undefined && v !== null) {
-      env[k] = v;
-    }
-  }
-
-  return env;
-}

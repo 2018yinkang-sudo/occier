@@ -21,14 +21,22 @@ export function applyProviderEnv(env, providerConfig) {
   }
 }
 
-export function launchClaude(providerEnvVars) {
+export function launchClaude(providerEnvVars, passthroughArgs = null) {
   const env = { ...process.env };
   clearProviderEnv(env);
   applyProviderEnv(env, providerEnvVars);
 
-  const args = process.argv.slice(2);
-  if (args.length > 0 && ['deepseek', 'kimi', 'anthropic'].includes(args[0])) {
-    args.splice(0, 1);
+  let args;
+  if (passthroughArgs !== null) {
+    // Explicit passthrough from the v2 dispatcher — never re-read process.argv,
+    // otherwise occier's own subcommand/flags would leak into claude's prompt.
+    args = passthroughArgs;
+  } else {
+    // Legacy v1 path: `occier <provider> [claude args...]`
+    args = process.argv.slice(2);
+    if (args.length > 0 && ['deepseek', 'kimi', 'anthropic'].includes(args[0])) {
+      args.splice(0, 1);
+    }
   }
 
   const child = spawn('claude', args, {
@@ -46,7 +54,7 @@ export function launchClaude(providerEnvVars) {
     process.exit(1);
   });
 
-  child.on('exit', (code) => {
-    process.exit(code ?? 0);
+  child.on('exit', (code, signal) => {
+    process.exit(code ?? (signal ? 1 : 0));
   });
 }

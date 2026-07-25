@@ -1,5 +1,5 @@
 import { select } from '@inquirer/prompts';
-import { c, ok, warn, info, divider } from '../tui.mjs';
+import { c, warn, divider } from '../../tui.mjs';
 import { allGroups, getGroup } from '../../model-groups/registry.mjs';
 import { allProviders, getProvider } from '../../registry/providers.mjs';
 import { createStore } from '../../store/credential-store.mjs';
@@ -28,7 +28,7 @@ export async function groupUse() {
   const store = createStore();
   const entries = await store.list();
   const providers = allProviders().filter((p) =>
-    p.envVarName && entries.some((e) => e.key === p.envVarName.toLowerCase()),
+    p.envVarName && entries.some((e) => e.key.toLowerCase() === p.envVarName.toLowerCase()),
   );
   const groups = allGroups().filter((g) =>
     providers.some((p) => p.id === g.provider) || g.id === 'custom',
@@ -48,9 +48,16 @@ export async function groupUse() {
   });
 
   const group = getGroup(chosen);
+
+  const { readConfig, writeConfig } = await import('../../schema/config.mjs');
+  const config = await readConfig();
+  config.defaultModelGroup = chosen;
+  await writeConfig(config);
+
   console.log(`\n  ${c.green('✓')} Using ${c.cyan(group.label)}`);
   console.log(`    Provider: ${c.gray(group.provider)}`);
   console.log(`    Model:    ${c.gray(group.models.primary || 'default')}`);
+  console.log(`    ${c.gray('Saved as default model group.')}`);
   console.log(``);
 }
 
@@ -62,7 +69,7 @@ export async function modelList() {
   console.log(``);
 
   for (const p of providers) {
-    if (p.models.length === 0) continue;
+    if (!p.models || p.models.length === 0) continue;
     console.log(`  ${c.cyan('●')} ${p.label} (${p.protocol})`);
     for (const m of p.models) {
       console.log(`    ${m.id.padEnd(35)} ${c.gray(`${m.context.toLocaleString()} ctx`)}`);
@@ -79,7 +86,7 @@ export async function modelProbe() {
   const entries = await store.list();
 
   const providers = allProviders().filter((p) =>
-    p.healthUrl && entries.some((e) => e.key === p.envVarName.toLowerCase()),
+    p.healthUrl && entries.some((e) => e.key.toLowerCase() === p.envVarName.toLowerCase()),
   );
 
   if (providers.length === 0) {
@@ -96,18 +103,20 @@ export async function modelProbe() {
   });
 
   const provider = getProvider(chosen);
-  console.log(`  ${c.gray(`Connecting to ${provider.baseURL || provider.defaultModel || chosen}...`)}`);
+  console.log(`  ${c.gray(`Probing ${provider.label}...`)}\n`);
 
-  if (provider.healthUrl) {
-    const { run } = await import('../../exec/runner.mjs');
-    const r = await run('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', '--connect-timeout', '5', provider.healthUrl], { timeout: 8000 });
-    if (r.exitCode === 0) {
-      ok(`API reachable (HTTP ${r.stdout})`);
-    } else {
-      warn('API unreachable — check network or proxy');
-    }
+  const { probeProviderAll } = await import('../../registry/probes.mjs');
+  const result = await probeProviderAll(chosen);
+
+  if (result.error) {
+    warn(result.error);
   } else {
-    info('No health check endpoint for this provider');
+    for (const m of result.models) {
+      const icon = m.status === 'available' ? c.green('✓')
+        : m.status === 'auth_failed' ? c.red('✗')
+        : c.yellow('!');
+      console.log(`  ${icon} ${m.modelId.padEnd(35)} ${c.gray(`${m.status} — ${m.detail} (${m.ms}ms)`)}`);
+    }
   }
   console.log(``);
 }

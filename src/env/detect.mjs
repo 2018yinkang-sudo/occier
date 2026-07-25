@@ -1,6 +1,7 @@
 import { platform } from "os";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync } from "fs";
 import { run, hasCommand } from "../exec/runner.mjs";
+import { detectWslNetworkMode } from "../network/wsl.mjs";
 
 let _detected = null;
 
@@ -36,24 +37,7 @@ export function wslVersion() {
 }
 
 export function wslNetworkMode() {
-  if (!isWSL()) return null;
-  try {
-    const content = readFileSync("/etc/wsl.conf", "utf-8");
-    const match = content.match(/networkingMode\s*=\s*(\w+)/);
-    if (match) return match[1];
-  } catch { /* cannot read /etc/wsl.conf */ }
-  try {
-    const winHome = process.env.USERPROFILE;
-    if (winHome) {
-      const p = `${winHome.replace(/\\/g, "/")}/.wslconfig`;
-      if (existsSync(p)) {
-        const content = readFileSync(p, "utf-8");
-        const match = content.match(/networkingMode\s*=\s*(\w+)/);
-        if (match) return match[1];
-      }
-    }
-  } catch { /* .wslconfig not found */ }
-  return "nat";
+  return detectWslNetworkMode();
 }
 
 export function getShell() {

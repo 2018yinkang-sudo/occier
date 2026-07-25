@@ -1,9 +1,15 @@
 import { configureGitProxy, unsetGitProxy, configureNpmProxy, unsetNpmProxy } from "./proxy.mjs";
 
 export async function configurePipProxy(protocol, host, port) {
+  // pip only supports HTTP(S) proxies.
+  if (protocol !== "http" && protocol !== "https") {
+    process.stderr.write("  \x1b[33m⚠\x1b[0m  pip does not support socks5 proxies — skipped.\n");
+    return false;
+  }
   const url = `http://${host}:${port}`;
   const { runString } = await import("../exec/runner.mjs");
   await runString("pip", ["config", "set", "global.proxy", url], { timeout: 5000 });
+  return true;
 }
 
 export async function unsetPipProxy() {
@@ -14,11 +20,18 @@ export async function unsetPipProxy() {
 export async function configureAptProxy(protocol, host, port) {
   const url = `http://${host}:${port}`;
   const { writeFile } = await import("fs/promises");
-  await writeFile("/etc/apt/apt.conf.d/95proxy", [
-    `Acquire::http::Proxy "${url}";`,
-    `Acquire::https::Proxy "${url}";`,
-    "",
-  ].join("\n"));
+  try {
+    await writeFile("/etc/apt/apt.conf.d/95proxy", [
+      `Acquire::http::Proxy "${url}";`,
+      `Acquire::https::Proxy "${url}";`,
+      "",
+    ].join("\n"));
+  } catch (err) {
+    if (err.code === "EACCES") {
+      process.stderr.write("  \x1b[33m⚠\x1b[0m  APT proxy requires root. Run with sudo.\n");
+    }
+    throw err;
+  }
 }
 
 export async function unsetAptProxy() {
@@ -27,18 +40,27 @@ export async function unsetAptProxy() {
 }
 
 export async function configureProxychains(protocol, host, port) {
-  const { writeFile } = await import("fs/promises");
+  const { writeFile, copyFile } = await import("fs/promises");
   const proto = protocol === "socks5" ? "socks5" : "http";
-  await writeFile("/etc/proxychains4.conf", [
-    "strict_chain",
-    "proxy_dns",
-    "tcp_read_time_out 15000",
-    "tcp_connect_time_out 8000",
-    "",
-    "[ProxyList]",
-    `${proto}  ${host} ${port}`,
-    "",
-  ].join("\n"));
+  try {
+    // Preserve any existing user configuration before overwriting.
+    await copyFile("/etc/proxychains4.conf", "/etc/proxychains4.conf.occier-bak").catch(() => {});
+    await writeFile("/etc/proxychains4.conf", [
+      "strict_chain",
+      "proxy_dns",
+      "tcp_read_time_out 15000",
+      "tcp_connect_time_out 8000",
+      "",
+      "[ProxyList]",
+      `${proto}  ${host} ${port}`,
+      "",
+    ].join("\n"));
+  } catch (err) {
+    if (err.code === "EACCES") {
+      process.stderr.write("  \x1b[33m⚠\x1b[0m  Proxychains requires root. Run with sudo.\n");
+    }
+    throw err;
+  }
 }
 
 export async function configureAllProxies(protocol, host, port) {

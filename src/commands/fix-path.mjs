@@ -24,7 +24,7 @@ export async function fixPath() {
         break;
       }
 
-      writeFileSync(rc, `${content.trimEnd()}\n\n# Added by ociier\n${line}\n`);
+      writeFileSync(rc, `${content.trimEnd()}\n\n# Added by occier\n${line}\n`);
       modified = name;
       found = true;
       break;
@@ -37,11 +37,11 @@ export async function fixPath() {
       accessSync(rc, R_OK);
       const content = readFileSync(rc, 'utf-8');
       if (!content.includes(binDir)) {
-        writeFileSync(rc, `${content.trimEnd()}\n\n# Added by ociier\n${line}\n`);
+        writeFileSync(rc, `${content.trimEnd()}\n\n# Added by occier\n${line}\n`);
         modified = '.bashrc';
       }
     } catch {
-      writeFileSync(rc, `# Added by ociier\n${line}\n`);
+      writeFileSync(rc, `# Added by occier\n${line}\n`);
       modified = '.bashrc';
     }
   }

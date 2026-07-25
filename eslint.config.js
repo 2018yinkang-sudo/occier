@@ -15,6 +15,7 @@ export default [
         AbortController: "readonly",
         Buffer: "readonly",
         fetch: "readonly",
+        URL: "readonly",
       },
     },
     rules: {

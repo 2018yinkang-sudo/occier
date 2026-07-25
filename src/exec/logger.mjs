@@ -17,9 +17,20 @@ export async function ensureLogDir() {
 
 export function sanitizeLog(text) {
   return String(text ?? "")
-    .replace(/(api[_-]?key|auth[_-]?token|password|secret)\s*[:=]\s*['"]?[^'"\s]+['"]?/gi, "$1=***")
+    .replace(/(api[_-]?key|auth[_-]?token|password|secret|token)\s*[:=]\s*['"]?[^'"\s]+['"]?/gi, "$1=***")
+    .replace(/(["'](?:api[_-]?key|auth[_-]?token|password|secret|token)["']\s*:\s*["'])[^"']+(["'])/gi, "$1***$2")
     .replace(/Authorization:\s*Bearer\s+\S+/gi, "Authorization: Bearer ***")
     .replace(/Bearer\s+\S{10,}/g, "Bearer ***");
+}
+
+function sanitizeJSON(data) {
+  if (!data) return "";
+  try {
+    const str = typeof data === "string" ? data : JSON.stringify(data);
+    return sanitizeLog(str);
+  } catch {
+    return "[sanitized: unable to serialize]";
+  }
 }
 
 export async function log(level, message, data = null) {
@@ -34,7 +45,7 @@ export async function log(level, message, data = null) {
     await writeFile(file, `# occier log - ${ts.slice(0, 10)}\n# level: debug|info|warn|error\n# format: [timestamp] [level] [session] message\n\n`, { mode: 0o600 });
   }
 
-  await writeFile(file, line + (data ? " " + JSON.stringify(sanitizeLog(JSON.stringify(data))) : "") + "\n", { flag: "a" });
+  await writeFile(file, line + (data ? " " + sanitizeJSON(data) : "") + "\n", { flag: "a" });
 
   if (level === "error") {
     process.stderr.write(`  ${sanitizeLog(message)}\n`);

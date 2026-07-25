@@ -1,4 +1,4 @@
-import { c, banner, ok, warn, fail, info, divider } from '../tui.mjs';
+import { c, banner, ok, warn, fail, info, divider } from '../../tui.mjs';
 import { detectCapabilities } from '../../env/detect.mjs';
 import { readConfig } from '../../schema/config.mjs';
 import { createStore } from '../../store/credential-store.mjs';

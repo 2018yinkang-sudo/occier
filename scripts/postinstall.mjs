@@ -28,7 +28,7 @@ function addToShellRc(binDir) {
       if (content.includes(`"${binDir}:$PATH"`) || content.includes(`"${binDir}:"`)) {
         return { name, existed: true };
       }
-      writeFileSync(rc, `${content.trimEnd()}\n\n# Added by ociier\nexport PATH="${binDir}:$PATH"\n`);
+      writeFileSync(rc, `${content.trimEnd()}\n\n# Added by occier\nexport PATH="${binDir}:$PATH"\n`);
       return { name, existed: false };
     } catch { /* write failed, skip */ }
   }
@@ -38,8 +38,8 @@ function addToShellRc(binDir) {
 const result = addToShellRc(binDirFromPrefix());
 
 if (result && !result.existed) {
-  console.log(`\n  ociier: Added PATH entry to ~/${result.name}`);
+  console.log(`\n  occier: Added PATH entry to ~/${result.name}`);
   console.log(`  Run: source ~/${result.name}\n`);
 } else if (result && result.existed) {
-  console.log(`  ociier: PATH already configured in ~/${result.name}\n`);
+  console.log(`  occier: PATH already configured in ~/${result.name}\n`);
 }

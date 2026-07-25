@@ -1,19 +1,14 @@
-import { execFile } from 'child_process';
 import { stat, access } from 'fs/promises';
 import { R_OK } from 'fs';
 
 import { ENV_FILE, CC_CONFIG_DIR, HOME } from './paths.mjs';
 import { readProvidersEnv, configExists } from './config-io.mjs';
-import { allProviders } from './providers/registry.mjs';
+import { allProviders } from './registry/providers.mjs';
+import { runString } from './exec/runner.mjs';
 
 export async function checkClaudeInstalled() {
-  return new Promise((resolve) => {
-    const child = execFile('claude', ['--version'], { timeout: 5000 });
-    let stdout = '';
-    child.stdout?.on('data', d => stdout += d);
-    child.on('close', (code) => resolve({ pass: code === 0, detail: stdout.trim() || 'installed' }));
-    child.on('error', () => resolve({ pass: false, detail: 'not found' }));
-  });
+  const r = await runString('claude', ['--version'], { timeout: 5000 });
+  return { pass: r.exitCode === 0, detail: r.stdout || (r.exitCode === 0 ? 'installed' : 'not found') };
 }
 
 export async function checkProvidersEnv() {
@@ -21,7 +16,7 @@ export async function checkProvidersEnv() {
   const providers = allProviders();
   const results = {};
   for (const p of providers) {
-    const val = entries[p.envVar];
+    const val = entries[p.envVarName];
     results[p.id] = {
       pass: !!val && val.length > 4 && !val.includes('replace_with_your'),
       detail: val ? 'key set' : 'key not set',
@@ -56,7 +51,7 @@ export async function checkConfigDirPerms() {
 }
 
 export async function checkProviderConnectivity(providerId) {
-  const { getProvider } = await import('./providers/registry.mjs');
+  const { getProvider } = await import('./registry/providers.mjs');
   const p = getProvider(providerId);
   if (!p.healthUrl) return { pass: null, detail: 'N/A (uses claude.ai login)' };
 
