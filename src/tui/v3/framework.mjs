@@ -5,8 +5,7 @@ import { dirname, join } from "path";
 import { CONTENT_START, contentMaxLines, makeLineBudget } from "./panel-utils.mjs";
 import { createState, getCursorItemId, getScrollOffset, setScrollOffset } from "./state.mjs";
 import { theme } from "./theme.mjs";
-import { navigateMode } from "./modes/navigate.mjs";
-import { selectMode } from "./modes/select.mjs";
+import { focusMode } from "./modes/focus.mjs";
 import { inputMode } from "./modes/input.mjs";
 
 const term = termkit.terminal;
@@ -42,8 +41,7 @@ let _statusTimer = null;
 let _loadedPanels = {};
 
 const MODES = {
-  navigate: navigateMode,
-  select: selectMode,
+  focus: focusMode,
   input: inputMode,
 };
 
@@ -68,10 +66,6 @@ export function startDashboard(initialTab = 0) {
     }
 
     if (key === "CTRL_C" || key === "ESCAPE" || key === "q") {
-      if (_state.mode !== "navigate") {
-        setMode("navigate");
-        return;
-      }
       exitDashboard();
       return;
     }
@@ -124,6 +118,7 @@ function makeCtx() {
     scrollContent,
     scrollPage: (deltaPages) => scrollContent(deltaPages * contentMaxLines(term)),
     scrollTo: (offset) => scrollContentTo(offset),
+    moveCursor,
     ensureCursorVisible,
     getSelectableItems,
     invokeAction,
@@ -227,12 +222,10 @@ function drawFooter() {
   let text;
   if (_state.status) {
     text = `  ${_state.status.message}  `;
-  } else if (_state.mode === "select") {
-    text = "  ↑↓ / Move  Enter:Action  Esc:Back  ";
   } else if (_state.actionInFlight) {
-    text = "  Loading…  ";
+    text = "  ⏳ Working…  ";
   } else {
-    text = "  ←→ / Tab  ↑↓ / Scroll  Enter:Select  F5:Refresh  q/Esc:Quit  ";
+    text = "  ↑↓ Move · Enter Action · ←→ Tab · PgUp/PgDn Scroll · Home/End · F5 Refresh · q Quit  ";
   }
 
   term[theme.chrome.footer.fg](text);
@@ -288,7 +281,7 @@ async function loadPanel(tabId, scrollOffset, gen) {
   const mod = _loadedPanels[modPath];
   if (!mod || typeof mod.renderPanel !== "function") return;
 
-  const cursorItemId = _state.mode === "select" ? getCursorItemId(_state, tabId, getSelectableItems()) : null;
+  const cursorItemId = _state.cursor[tabId] ?? null;
   const budget = makeLineBudget(term, scrollOffset);
 
   try {
@@ -301,8 +294,11 @@ async function loadPanel(tabId, scrollOffset, gen) {
 
   if (gen !== _renderGen) return;
 
-  // Store the last budget so mode handlers can read item positions without
-  // re-rendering.
+  // Initialize cursor to the first selectable item if not yet set for this tab.
+  if (_state.cursor[tabId] === undefined && budget.items.length > 0) {
+    _state.cursor[tabId] = budget.items[0].id;
+  }
+
   _lastBudget = budget;
 }
 
@@ -351,6 +347,23 @@ function getPanelScrollInfo() {
   return { supportsScroll: totalLines > 0, totalLines };
 }
 
+// ── Cursor movement ──
+
+function moveCursor(delta) {
+  const items = getSelectableItems();
+  if (items.length === 0) return;
+
+  const tabId = currentTabId();
+  const currentId = getCursorItemId(_state, tabId, items);
+  let idx = items.findIndex((i) => i.id === currentId);
+  if (idx < 0) idx = 0;
+
+  idx = Math.max(0, Math.min(items.length - 1, idx + delta));
+  _state.cursor[tabId] = items[idx].id;
+  ensureCursorVisible();
+  renderScreen();
+}
+
 function ensureCursorVisible() {
   const items = getSelectableItems();
   const itemId = getCursorItemId(_state, currentTabId(), items);
@@ -384,8 +397,8 @@ async function invokeAction(itemId) {
   try {
     const result = await mod.handleAction(term, itemId);
 
-    // If the user left select mode during the action, discard the result.
-    if (_state.mode !== "select") return;
+    // If the user switched tabs during the action, discard the result.
+    if (currentTabId() !== tabId) return;
 
     if (result && typeof result === "object" && result.input) {
       _state.input = { spec: result.input, buffer: "", cursor: 0, error: null, continue: result.continue };
@@ -394,12 +407,8 @@ async function invokeAction(itemId) {
     }
 
     if (result) showStatus(result);
-    setMode("navigate");
   } catch (err) {
-    if (_state.mode === "select") {
-      showStatus(`Error: ${err.message}`);
-      setMode("navigate");
-    }
+    showStatus(`Error: ${err.message}`);
   } finally {
     _state.actionInFlight = false;
     renderScreen();
@@ -410,7 +419,7 @@ async function submitInput() {
   const continueFn = _state.input.continue;
   const value = _state.input.buffer;
   _state.input = null;
-  _state.mode = "navigate";
+  _state.mode = "focus";
 
   let message = null;
   if (typeof continueFn === "function") {
@@ -430,7 +439,7 @@ async function submitInput() {
 
 function cancelInput() {
   _state.input = null;
-  setMode("navigate");
+  setMode("focus");
 }
 
 // ── Status ──

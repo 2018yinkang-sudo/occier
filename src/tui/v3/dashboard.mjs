@@ -19,7 +19,7 @@ export async function renderPanel(term, state, budget) {
 
   const { tools, providers, network, vault } = _cache;
   const pad = "  ";
-  const selectedId = state.mode === "select" ? state.cursorItemId : null;
+  const selectedId = state.cursorItemId ?? null;
   const draw = (id, ...parts) => {
     if (id && selectedId === id) {
       selectedLine(term, ...parts);
