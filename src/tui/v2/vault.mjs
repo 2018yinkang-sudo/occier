@@ -55,4 +55,5 @@ export async function renderPanel(term) {
     { text: "occier vault list", fg: "cyan" },
     { text: " for details", fg: "gray" },
   );
+  term.styleReset();
 }

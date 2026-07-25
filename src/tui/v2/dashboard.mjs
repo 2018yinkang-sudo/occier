@@ -94,11 +94,13 @@ export async function renderPanel(term) {
 
   // ── Summary ──
   const summary = `${vault.count} credentials  |  ${configured.length} providers  |  ${network?.mirrors?.filter((m) => m.enabled).length || 0} mirrors`;
+  const w = Number.isFinite(term.width) ? term.width : 80;
   line(term,
-    { text: `${pad}${"─".repeat(term.width - 6)}`, fg: "gray" },
+    { text: `${pad}${"─".repeat(Math.max(1, w - 4))}`, fg: "gray" },
   );
   line(term,
     { text: `${pad}`, fg: "white" },
     { text: summary, fg: "brightWhite" },
   );
+  term.styleReset();
 }

@@ -61,4 +61,5 @@ export async function renderPanel(term) {
     { text: "occier provider connect", fg: "cyan" },
     { text: " to configure", fg: "gray" },
   );
+  term.styleReset();
 }

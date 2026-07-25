@@ -2,6 +2,7 @@ import termkit from "terminal-kit";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { CONTENT_START } from "./panel-utils.mjs";
 
 const term = termkit.terminal;
 
@@ -38,14 +39,12 @@ let _switchTimer = null;
 export function startDashboard(initialTab = 0) {
   _currentTab = initialTab;
 
-  // Force dark background so white/bright text is readable regardless of
-  // terminal theme. This is a one-time erase — subsequent renders overwrite
-  // rows without clearing.
-  term.bgBlack();
-  try { term.eraseDisplay(); } catch { /* non-TTY: erase not available, skip */ }
+  // Enter fullscreen first, then clear the alternate buffer. Clearing before
+  // fullscreen can leave artifacts from the normal screen on the first paint.
   term.fullscreen(true);
   term.hideCursor();
   term.grabInput(true);
+  term.clear();
 
   term.on("key", (key) => {
     if (key === "CTRL_C" || key === "ESCAPE" || key === "q") {
@@ -55,7 +54,7 @@ export function startDashboard(initialTab = 0) {
     if (key === "LEFT" || key === "SHIFT_TAB") {
       switchTab((_currentTab - 1 + TABS.length) % TABS.length);
     } else if (key === "RIGHT" || key === "TAB") {
-      switchTab((_currentTab + 1) % TABS.length);
+      switchTab((_currentTab + 1 + TABS.length) % TABS.length);
     } else if (key === "f5") {
       switchTab(_currentTab);
     }
@@ -106,13 +105,19 @@ async function renderScreen() {
 
   drawHeader();
   drawTabBar();
-  term("\n");
+
+  // Position the cursor at the start of the content area so async panels
+  // cannot write to arbitrary locations on the screen.
+  term.moveTo(1, CONTENT_START);
   await drawContent();
 
   // If the user has switched tabs since we started, do not paint a stale footer.
   if (gen !== _renderGen) return;
 
   drawFooter();
+
+  // Remove any leftover content below the footer from a previous larger panel.
+  try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
 }
 
 function drawContent() {
@@ -186,10 +191,6 @@ async function loadPanel(modPath) {
     if (gen !== _renderGen) return;
     if (mod && typeof mod.renderPanel === "function") {
       await mod.renderPanel(term);
-      // Clear any leftover lines from a previous larger panel.
-      if (gen === _renderGen) {
-        try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
-      }
       return;
     }
     term.styleReset();
@@ -201,4 +202,5 @@ async function loadPanel(modPath) {
     term.bgBlack();
     term.red(`  Error loading panel: ${err.message}\n`);
   }
+  term.styleReset();
 }

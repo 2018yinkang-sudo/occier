@@ -64,12 +64,14 @@ export async function renderPanel(term) {
   if (okLine()) return;
 
   for (const m of mirrors || []) {
+    const url = m.baseUrl.length > 50 ? `${m.baseUrl.slice(0, 47)}...` : m.baseUrl;
     line(term,
       { text: `${pad}`, fg: "white" },
       { text: "● ", fg: m.enabled ? "brightGreen" : "gray" },
       { text: m.id.padEnd(18), fg: "brightWhite" },
-      { text: m.baseUrl, fg: "gray" },
+      { text: url, fg: "gray" },
     );
     if (okLine()) break;
   }
+  term.styleReset();
 }

@@ -72,4 +72,5 @@ export async function renderPanel(term) {
     { text: `${pad}  `, fg: "white" },
     { text: "occier tool update claude", fg: "cyan" },
   );
+  term.styleReset();
 }

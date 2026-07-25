@@ -4,15 +4,27 @@
 export function line(term, ...parts) {
   term.styleReset();
   term.bgBlack();
+
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  let remaining = w;
+
   for (const p of parts) {
+    if (remaining <= 0) break;
     if (typeof p === "string") {
-      term(p);
+      const text = p.length > remaining ? p.slice(0, remaining) : p;
+      term(text);
+      remaining -= text.length;
     } else {
+      const text = (p.text ?? "").length > remaining
+        ? (p.text ?? "").slice(0, remaining)
+        : (p.text ?? "");
       if (p.fg) term[p.fg]();
       if (p.bold) term.bold();
-      term(p.text);
+      term(text);
+      remaining -= text.length;
     }
   }
+
   term("\n");
 }
 

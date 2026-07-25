@@ -20,4 +20,5 @@ export async function renderPanel(term) {
     { text: "occier launch", fg: "cyan" },
     { text: " to launch Claude Code or OpenCode", fg: "gray" },
   );
+  term.styleReset();
 }
