@@ -175,12 +175,8 @@ export async function route(args) {
     return;
   }
 
-  if (cmd === 'deepseek' || cmd === 'kimi' || cmd === 'anthropic') {
-    const { directLaunch } = await import('./commands/launch.mjs');
-    await directLaunch(cmd);
-    return;
-  }
-
+  // Built-in commands take precedence over provider IDs to prevent
+  // user-defined providers from shadowing core commands.
   if (cmd === 'mirror') {
     await dispatchMirror(args.slice(1));
     return;
@@ -201,6 +197,14 @@ export async function route(args) {
   if (entry && entry.subCommands) {
     const subs = Object.keys(entry.subCommands).join('|');
     console.log(`  ${c.yellow('Usage:')} occier ${cmd} ${subs}\n`);
+    return;
+  }
+
+  // Direct launch by provider id (e.g. occier deepseek, occier openrouter)
+  const { getProviderSafe } = await import('./registry/providers.mjs');
+  if (getProviderSafe(cmd)) {
+    const { directLaunch } = await import('./commands/launch.mjs');
+    await directLaunch(cmd);
     return;
   }
 

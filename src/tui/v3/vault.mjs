@@ -54,9 +54,9 @@ export async function renderPanel(term, state, budget) {
   );
   if (budget.okLine()) return;
   line(term,
-    { text: `${pad}Run `, fg: "gray" },
-    { text: "occier vault list", fg: "cyan" },
-      { text: " to manage credentials", fg: "gray" },
+    { text: `${pad}Press `, fg: "gray" },
+    { text: "Enter", fg: "cyan" },
+      { text: " on a key to remove it, or 'Add credential' to add.", fg: "gray" },
   );
   term.styleReset();
 }
@@ -85,15 +85,30 @@ export async function handleAction(_term, itemId) {
             password: true,
           },
           async continue(value) {
-            if (!value) return "Cancelled";
-            try {
-              const result = await setCredential(k, value);
-              _lastUpdate = 0;
-              if (result.ok) return `${k} added`;
-              return `Error: ${result.error}`;
-            } catch (err) {
-              return `Error: ${err.message}`;
-            }
+            if (!value || value.length < 4) return "Error: Value must be at least 4 characters";
+            return {
+              select: {
+                prompt: "Credential type",
+                choices: [
+                  { label: "1  API Key", value: "api_key" },
+                  { label: "2  GitHub Token", value: "github_token" },
+                  { label: "3  Proxy Password", value: "proxy_password" },
+                  { label: "4  Other", value: "other" },
+                ],
+                defaultCursor: 0,
+              },
+              async continue(type) {
+                if (!type) return "Cancelled";
+                try {
+                  const result = await setCredential(k, value, type);
+                  _lastUpdate = 0;
+                  if (result.ok) return `${k} added (${type})`;
+                  return `Error: ${result.error}`;
+                } catch (err) {
+                  return `Error: ${err.message}`;
+                }
+              },
+            };
           },
         };
       },

@@ -1,6 +1,7 @@
 import { checkbox, password, select, confirm } from '@inquirer/prompts';
-import { readProvidersEnv, writeProvidersEnv, readConfig, writeConfig, providersEnvExists } from '../config-io.mjs';
+import { readProvidersEnv, readConfig, writeConfig, providersEnvExists } from '../config-io.mjs';
 import { allProviders, getProvider } from '../registry/providers.mjs';
+import { createStore } from '../store/credential-store.mjs';
 import { c, banner } from '../tui.mjs';
 
 export async function runSetup() {
@@ -58,8 +59,16 @@ export async function runSetup() {
     console.log('');
   }
 
-  const allEntries = { ...(await readProvidersEnv()), ...keys };
-  await writeProvidersEnv(allEntries);
+  const store = createStore();
+  for (const [envVarName, key] of Object.entries(keys)) {
+    if (key && key.length >= 4) {
+      await store.set(envVarName.toLowerCase(), {
+        type: "api_key",
+        value: key,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
 
   const config = await readConfig();
   config.providers = [...new Set([...config.providers, ...selected])];
@@ -67,17 +76,17 @@ export async function runSetup() {
   config.configured = true;
   await writeConfig(config);
 
-  console.log(`  ${c.green('✓')} Configuration saved to ~/.config/claude-code/providers.env`);
-  console.log('');
+  console.log(`  ${c.green('✓')} Credentials saved to encrypted vault.\n`);
 }
 
 export async function setKey() {
-  const entries = await readProvidersEnv();
+  const store = createStore();
+  const entries = await store.list();
 
   const { id } = await select({
     message: 'Select provider:',
     choices: allProviders().map(p => ({
-      name: `${p.label.padEnd(14)} (current: ${entries[p.envVarName] ? '****configured****' : 'not set'})`,
+      name: `${p.label.padEnd(14)} (current: ${entries.some(e => e.key === p.envVarName.toLowerCase()) ? '****configured****' : 'not set'})`,
       value: p.id,
     })),
   });
@@ -99,8 +108,11 @@ export async function setKey() {
     },
   });
 
-  entries[p.envVarName] = key;
-  await writeProvidersEnv(entries);
+  await store.set(p.envVarName.toLowerCase(), {
+    type: "api_key",
+    value: key,
+    updatedAt: new Date().toISOString(),
+  });
   console.log(`\n  ${c.green('✓')} ${p.label} API key updated.\n`);
 }
 

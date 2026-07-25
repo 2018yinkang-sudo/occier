@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, access } from 'fs/promises';
 import { constants } from 'fs';
 import { CC_CONFIG_DIR, ENV_FILE, CONFIG_FILE } from './paths.mjs';
+import { parseEnvContent } from './store/credential-store.mjs';
 
 const DEFAULT_CONFIG = {
   version: 1,
@@ -33,36 +34,32 @@ export async function writeConfig(config) {
 
 export async function readProvidersEnv() {
   const entries = {};
+
+  // Parse legacy env file using shared parser
   try {
     await access(ENV_FILE, constants.R_OK);
     const raw = await readFile(ENV_FILE, 'utf-8');
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIdx = trimmed.indexOf('=');
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      let val = trimmed.slice(eqIdx + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) ||
-          (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
-      }
-      entries[key] = val;
+    const parsed = parseEnvContent(raw);
+    for (const [key, entry] of Object.entries(parsed)) {
+      entries[key.toUpperCase()] = entry.value;
     }
   } catch {
     // no legacy env file — fall through to vault merge
   }
 
   // Bridge: surface v2 vault credentials (lowercase keys) to v1 consumers
-  // (original-case keys). The env file wins on conflicts.
+  // (original-case keys). Only read provider-specific keys, not the entire vault.
   try {
     const { createStore } = await import('./store/credential-store.mjs');
+    const { allProviders } = await import('./registry/providers.mjs');
     const store = createStore();
-    const vault = await store.readAll();
-    for (const [key, entry] of Object.entries(vault)) {
-      const upper = key.toUpperCase();
-      if (!(upper in entries) && entry && typeof entry.value === 'string') {
-        entries[upper] = entry.value;
+    for (const p of allProviders()) {
+      const lowerKey = p.envVarName.toLowerCase();
+      if (!(p.envVarName in entries)) {
+        const data = await store.get(lowerKey);
+        if (data && typeof data.value === 'string') {
+          entries[p.envVarName] = data.value;
+        }
       }
     }
   } catch {
@@ -70,22 +67,6 @@ export async function readProvidersEnv() {
   }
 
   return entries;
-}
-
-export async function writeProvidersEnv(entries) {
-  await ensureConfigDir();
-  const lines = [
-    '# Claude Code provider credentials',
-    '# Managed by occier',
-    '# Never commit this file.',
-    '# Permissions: 600',
-    '',
-  ];
-  for (const [key, val] of Object.entries(entries)) {
-    lines.push(`${key}="${val}"`);
-  }
-  lines.push('');
-  await writeFile(ENV_FILE, lines.join('\n'), { mode: 0o600 });
 }
 
 export async function providersEnvExists() {

@@ -1,5 +1,7 @@
 import { createStore, maskValue } from "../store/credential-store.mjs";
 
+const KEY_PATTERN = /^[a-z][a-z0-9_]{0,63}$/i;
+
 export async function listCredentials() {
   const store = createStore();
   const entries = await store.list();
@@ -16,9 +18,13 @@ export async function listCredentials() {
 
 export async function setCredential(key, value, type = "api_key") {
   if (!key || !value) return { ok: false, error: "Key and value are required" };
+  const trimmedKey = key.trim();
+  if (!KEY_PATTERN.test(trimmedKey)) {
+    return { ok: false, error: "Invalid key name — use letters, digits, and underscores only (max 64 chars)" };
+  }
   const store = createStore();
-  await store.set(key.trim(), { type, value, updatedAt: new Date().toISOString() });
-  return { ok: true, data: { key: key.trim(), type, fingerprint: maskValue(value) } };
+  await store.set(trimmedKey, { type, value, updatedAt: new Date().toISOString() });
+  return { ok: true, data: { key: trimmedKey, type, fingerprint: maskValue(value) } };
 }
 
 export async function removeCredential(key) {

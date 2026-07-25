@@ -10,13 +10,13 @@ describe("maskKey", () => {
 
   it("returns **** for short keys", () => {
     expect(maskKey("abc")).toBe("****");
-    expect(maskKey("12345678")).toBe("****");
+    expect(maskKey("1234")).toBe("****");
   });
 
-  it("masks middle of long key", () => {
+  it("masks long key showing only last 4", () => {
     const r = maskKey("sk-thisIsALongKey12345");
     expect(r).toContain("****");
-    expect(r.startsWith("sk-t")).toBe(true);
     expect(r.endsWith("2345")).toBe(true);
+    expect(r.startsWith("sk-t")).toBe(false);
   });
 });

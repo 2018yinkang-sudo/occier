@@ -86,11 +86,44 @@ export async function runLaunch(args) {
 
     launchClaude(envVars, filterLaunchArgs(args));
   } else if (tool === 'opencode') {
+    const store = createStore();
+    const { allProviders } = await import('../../registry/providers.mjs');
+    const { clearProviderEnv } = await import('../../launch.mjs');
+    const envVars = { ...process.env };
+    clearProviderEnv(envVars);
+
+    if (!providerId) {
+      const entries = await store.list();
+      const configured = allProviders().filter((p) =>
+        entries.some((e) => e.key === p.envVarName.toLowerCase()),
+      );
+      if (configured.length === 0) {
+        console.error(`\n  ${c.red('Error:')} No providers configured. Run ${c.cyan('occier provider connect')}.\n`);
+        process.exit(1);
+      }
+      const { select } = await import('@inquirer/prompts');
+      providerId = await select({
+        message: 'Select provider:',
+        choices: configured.map((p) => ({
+          name: `${p.label.padEnd(14)} ${p.description}`,
+          value: p.id,
+        })),
+      });
+    }
+
+    const provider = getProviderSafe(providerId);
+    if (provider) {
+      const data = await store.get(provider.envVarName.toLowerCase());
+      if (data?.value) {
+        envVars[provider.envVarName] = data.value;
+      }
+    }
+
     console.log(`  ${c.cyan('Starting OpenCode...')}`);
     console.log(``);
 
     const { spawn } = await import('child_process');
-    const child = spawn('opencode', [], { stdio: 'inherit' });
+    const child = spawn('opencode', [], { stdio: 'inherit', env: envVars });
     child.on('error', (err) => {
       console.error(`\n  ${c.red('Error:')} ${err.message}\n`);
       process.exit(1);
