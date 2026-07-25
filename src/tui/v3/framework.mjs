@@ -44,6 +44,9 @@ let _statusTimer = null;
 let _loadedPanels = {};
 let _rendering = false;
 let _renderDirty = false;
+let _loadGen = 0;
+
+const SPINNER_FRAMES = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
 
 const MODES = {
   focus: focusMode,
@@ -196,6 +199,33 @@ function setMode(nextMode) {
 // eliminates the duplicate-content / ghost-frame bug caused by interleaved
 // async renders (term.clear() from render N+1 between panel draws of N).
 
+function startLoadingAnimation() {
+  let frame = 0;
+  return setInterval(() => {
+    const w = Number.isFinite(term.width) ? term.width : 80;
+    term.moveTo(1, CONTENT_START);
+    term.styleReset();
+    term.bgBlack();
+    term.gray(`  ${SPINNER_FRAMES[frame]} Loading…`);
+    term.black(" ".repeat(Math.max(0, w - 14)));
+    term.styleReset();
+    term.hideCursor();
+    frame = (frame + 1) % SPINNER_FRAMES.length;
+  }, 100);
+}
+
+function stopLoadingAnimation(timer) {
+  clearInterval(timer);
+}
+
+function isPanelCached(tabId) {
+  const modPath = MOD_MAP[tabId];
+  if (!modPath) return true;
+  const mod = _loadedPanels[modPath];
+  if (!mod || typeof mod.isCached !== "function") return true;
+  return mod.isCached();
+}
+
 function renderScreen() {
   if (_rendering) {
     _renderDirty = true;
@@ -214,22 +244,34 @@ async function _runRender() {
 }
 
 async function _doRender() {
-  term.clear();
-  drawHeader();
-
-  term.moveTo(1, CONTENT_START);
-
   const tabId = currentTabId();
   const scrollOffset = getScrollOffset(_state, tabId);
-
+  const cached = isPanelCached(tabId);
   const cursorWasUnset = _state.cursor[tabId] === undefined;
-  await loadPanel(tabId, scrollOffset);
+
+  // Skeleton: draw instantly. When the panel data is not cached the content
+  // area shows a spinner animation until await loadPanel resolves.
+  term.clear();
+  drawHeader();
+  drawTabBar();
+  drawFooter();
+  drawStatusLine();
+
+  if (!cached) {
+    const animTimer = startLoadingAnimation();
+    const gen = ++_loadGen;
+    term.moveTo(1, CONTENT_START);
+    await loadPanel(tabId, scrollOffset);
+    stopLoadingAnimation(animTimer);
+    if (gen !== _loadGen) return; // tab was switched during load
+  } else {
+    term.moveTo(1, CONTENT_START);
+    await loadPanel(tabId, scrollOffset);
+  }
+
   const cursorJustInitialized = cursorWasUnset && _state.cursor[tabId] !== undefined;
 
-  // Draw tab bar AFTER loadPanel so the current tab's badge (getTabSummary)
-  // reflects freshly-loaded data.
-  drawTabBar();
-
+  // Modals override normal chrome.
   if (_state.mode === "input" && _state.input?.spec) {
     drawInputModal();
   } else if (_state.mode === "select" && _state.select) {
@@ -248,8 +290,9 @@ async function _doRender() {
     try { term.eraseDisplayAfter(); } catch { /* non-TTY: skip */ }
   }
 
-  // If the cursor was just initialized for this tab, the first paint didn't
-  // show the ▸ marker. Trigger one coalesced follow-up render to fix it.
+  // Refresh tab bar after load for the freshest badge.
+  drawTabBar();
+
   if (cursorJustInitialized) {
     _renderDirty = true;
   }

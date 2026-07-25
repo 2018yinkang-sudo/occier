@@ -8,6 +8,10 @@ let _lastUpdate = 0;
 let _lastCacheGen = 0;
 let _cache = { tools: null, providers: null, network: null, vault: null };
 
+export function isCached() {
+  return _cache.tools !== null && (Date.now() - _lastUpdate) <= 10000;
+}
+
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache.tools || state.forceRefresh || state.cacheGen !== _lastCacheGen) {

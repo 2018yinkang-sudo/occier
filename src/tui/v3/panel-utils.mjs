@@ -45,6 +45,20 @@ export function sectionHeader(term, title) {
   term("\n");
 }
 
+// When drawing a focused/inverted row (bgBrightWhite), map bright foreground
+// colors to their dark variants so text remains readable.
+const FG_REMAP = {
+  brightWhite: "black",
+  white: "black",
+  brightGreen: "green",
+  brightCyan: "cyan",
+  brightRed: "red",
+  brightBlue: "blue",
+  brightMagenta: "magenta",
+  brightYellow: "yellow",
+  brightBlack: "gray",
+};
+
 export function selectedLine(term, ...parts) {
   term.styleReset();
   term.bgBrightWhite();
@@ -62,8 +76,8 @@ export function selectedLine(term, ...parts) {
       const text = (p.text ?? "").length > remaining
         ? (p.text ?? "").slice(0, remaining)
         : (p.text ?? "");
-      // Preserve the part's foreground color on the inverted background.
-      if (p.fg) term[p.fg](); else term.black();
+      // Remap bright colors to dark variants on the inverted background.
+      if (p.fg) { term[FG_REMAP[p.fg] || p.fg](); } else { term.black(); }
       if (p.bold) term.bold();
       term(text);
       remaining -= text.length;

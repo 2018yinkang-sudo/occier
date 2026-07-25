@@ -60,19 +60,31 @@ export async function detectCapabilities() {
     hasCommand("opencode"),
   ]);
 
+  // Fetch version strings in parallel — NOT in the object literal return
+  // which evaluates left-to-right causing sequential awaits (~1.7s).
+  const [nodeVer, npmVer, gitVer, , ccVer, ocVer, ghAuth] = await Promise.all([
+    node ? getVersion("node") : null,
+    npm ? getVersion("npm") : null,
+    git ? getVersion("git") : null,
+    gh ? getVersion("gh") : null,
+    cc ? getVersion("claude") : null,
+    oc ? getVersion("opencode") : null,
+    gh ? checkGhAuth() : false,
+  ]);
+
   return {
     os: getOS(),
     isWSL: isWSL(),
     wslVersion: wslVersion(),
     wslNetworkMode: wslNetworkMode(),
     shell: getShell(),
-    node: { installed: node, version: node ? await getVersion("node") : null },
-    npm: { installed: npm, version: npm ? await getVersion("npm") : null },
-    git: { installed: git, version: git ? await getVersion("git") : null },
+    node: { installed: node, version: nodeVer },
+    npm: { installed: npm, version: npmVer },
+    git: { installed: git, version: gitVer },
     curl: { installed: curl },
-    gh: { installed: gh, loggedIn: gh ? await checkGhAuth() : false },
-    claude: { installed: cc, version: cc ? await getVersion("claude") : null },
-    opencode: { installed: oc, version: oc ? await getVersion("opencode") : null },
+    gh: { installed: gh, loggedIn: ghAuth },
+    claude: { installed: cc, version: ccVer },
+    opencode: { installed: oc, version: ocVer },
     proxy: detectProxyEnv(),
     nodeVersion: process.version,
   };
