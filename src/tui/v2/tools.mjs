@@ -1,10 +1,10 @@
 import { getToolStatus } from "../../services/tools.mjs";
-import { line, sectionHeader, contentMaxLines } from "./panel-utils.mjs";
+import { line, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
 let _cache = null;
 
-export async function renderPanel(term) {
+export async function renderPanel(term, state = {}) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache) {
     _cache = await getToolStatus();
@@ -13,10 +13,7 @@ export async function renderPanel(term) {
 
   const { claude, opencode, gh } = _cache;
   const pad = "  ";
-  let lines = 0;
-  const max = contentMaxLines(term);
-
-  function okLine() { lines++; if (lines >= max) return true; return false; }
+  const okLine = makeLineBudget(term, state.scrollOffset ?? 0);
 
   sectionHeader(term, "Development Tools");
   if (okLine()) return;
@@ -73,4 +70,9 @@ export async function renderPanel(term) {
     { text: "occier tool update claude", fg: "cyan" },
   );
   term.styleReset();
+}
+
+export function getScrollInfo() {
+  // Tools panel content is a fixed 12 logical lines.
+  return { supportsScroll: true, totalLines: 12 };
 }

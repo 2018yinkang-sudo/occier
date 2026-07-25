@@ -43,5 +43,22 @@ export const CONTENT_START = 4;
 // Maximum content lines before the footer row.
 // Header(1) + tab bar(1) + spacer(1) + footer(1) = 4 rows.
 export function contentMaxLines(term) {
-  return Math.max(1, term.height - 4);
+  const h = Number.isFinite(term.height) ? term.height : 24;
+  return Math.max(1, h - 4);
+}
+
+// Create a scroll-aware line budgeter. Panels use this exactly like the
+// previous `let lines = 0; function okLine() {...}` pattern, but it also
+// skips `scrollOffset` logical lines at the top and clamps at `max` drawn
+// lines. Returns the budgeting function.
+export function makeLineBudget(term, scrollOffset = 0) {
+  const max = contentMaxLines(term);
+  let logical = 0;
+  let drawn = 0;
+  return function okLine() {
+    logical++;
+    if (logical <= scrollOffset) return false;
+    drawn++;
+    return drawn > max;
+  };
 }

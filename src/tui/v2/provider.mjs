@@ -1,21 +1,11 @@
 import { getProviderStatus } from "../../services/provider.mjs";
-import { line, sectionHeader, contentMaxLines } from "./panel-utils.mjs";
+import { line, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
 
 let _lastUpdate = 0;
 let _cache = null;
 
-export async function renderPanel(term) {
-  const now = Date.now();
-  if (now - _lastUpdate > 10000 || !_cache) {
-    _cache = await getProviderStatus();
-    _lastUpdate = now;
-  }
-
+function renderContent(term, okLine) {
   const pad = "  ";
-  let lines = 0;
-  const max = contentMaxLines(term);
-
-  function okLine() { lines++; if (lines >= max) return true; return false; }
 
   sectionHeader(term, "Providers");
   if (okLine()) return;
@@ -61,5 +51,31 @@ export async function renderPanel(term) {
     { text: "occier provider connect", fg: "cyan" },
     { text: " to configure", fg: "gray" },
   );
+}
+
+export async function renderPanel(term, state = {}) {
+  const now = Date.now();
+  if (now - _lastUpdate > 10000 || !_cache) {
+    _cache = await getProviderStatus();
+    _lastUpdate = now;
+  }
+
+  const budget = makeLineBudget(term, state.scrollOffset ?? 0);
+  renderContent(term, budget);
   term.styleReset();
+}
+
+export function getScrollInfo() {
+  if (!_cache) return { supportsScroll: false, totalLines: 0 };
+  const configured = _cache.filter((p) => p.configured);
+  const available = _cache.filter((p) => !p.configured);
+  let total = 1; // sectionHeader
+  if (configured.length > 0) {
+    total += 1 + configured.length + 1; // label + items + empty line
+  }
+  if (available.length > 0) {
+    total += 1 + available.length + 1; // label + items + empty line
+  }
+  total += 1; // hint line
+  return { supportsScroll: true, totalLines: total };
 }

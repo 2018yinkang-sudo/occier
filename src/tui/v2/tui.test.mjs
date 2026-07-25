@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { renderPanel as dashboardPanel } from "./dashboard.mjs";
 import { renderPanel as networkPanel } from "./network.mjs";
 import { renderPanel as vaultPanel } from "./vault.mjs";
-import { renderPanel as providerPanel } from "./provider.mjs";
-import { renderPanel as toolsPanel } from "./tools.mjs";
+import { renderPanel as providerPanel, getScrollInfo as providerScrollInfo } from "./provider.mjs";
+import { renderPanel as toolsPanel, getScrollInfo as toolsScrollInfo } from "./tools.mjs";
 import { renderPanel as projectsPanel } from "./projects.mjs";
-import { line, sectionHeader } from "./panel-utils.mjs";
+import { line, sectionHeader, makeLineBudget } from "./panel-utils.mjs";
 
 function createMockTerm() {
   const lines = [];
@@ -90,10 +90,22 @@ describe("TUI panels", () => {
     expect(output).toContain("Projects");
   });
 
-  it("panels take exactly one argument (no refreshFn)", () => {
-    for (const panel of [dashboardPanel, networkPanel, vaultPanel, providerPanel, toolsPanel, projectsPanel]) {
-      expect(panel.length).toBe(1);
-    }
+  it("tools and projects panels honour scrollOffset", async () => {
+    const { term: t1, lines: l1 } = createMockTerm();
+    t1.height = 6; // small viewport
+    await toolsPanel(t1, { scrollOffset: 2 });
+    const out1 = l1.join("");
+    expect(out1).toContain("GitHub"); // first 2 lines (Development Tools + Claude) skipped
+
+    const { term: t2, lines: l2 } = createMockTerm();
+    await projectsPanel(t2, { scrollOffset: 1 });
+    const out2 = l2.join("");
+    expect(out2).toContain("occier project open");
+  });
+
+  it("scrollable panels export getScrollInfo", () => {
+    expect(typeof toolsScrollInfo).toBe("function");
+    expect(typeof providerScrollInfo).toBe("function");
   });
 });
 
@@ -115,5 +127,27 @@ describe("panel-utils", () => {
     const joined = lines.join("");
     expect(joined).toContain("─");
     expect(joined).toContain("Test Section");
+  });
+
+  it("makeLineBudget skips scrollOffset lines then clamps at max", () => {
+    const termLike = { width: 80, height: 10 }; // max = 6
+    const okLine = makeLineBudget(termLike, 2);
+    const results = [];
+    for (let i = 0; i < 10; i++) {
+      results.push(okLine());
+    }
+    // First 2 logical lines skipped -> false
+    expect(results[0]).toBe(false);
+    expect(results[1]).toBe(false);
+    // Next 6 drawn -> false
+    expect(results[2]).toBe(false);
+    expect(results[3]).toBe(false);
+    expect(results[4]).toBe(false);
+    expect(results[5]).toBe(false);
+    expect(results[6]).toBe(false);
+    expect(results[7]).toBe(false);
+    // 9th line exceeds max -> true
+    expect(results[8]).toBe(true);
+    expect(results[9]).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import termkit from "terminal-kit";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { CONTENT_START } from "./panel-utils.mjs";
+import { CONTENT_START, contentMaxLines } from "./panel-utils.mjs";
 
 const term = termkit.terminal;
 
@@ -33,6 +33,20 @@ const MOD_MAP = {
 let _currentTab = 0;
 let _renderGen = 0;
 let _switchTimer = null;
+let _loadedPanels = {};
+
+const MODES = {
+  NAVIGATE: "navigate",
+  SELECT: "select",
+  INPUT: "input",
+};
+let _mode = MODES.NAVIGATE;
+let _scrollOffsets = {}; // tabId -> scroll offset
+
+function setMode(mode) {
+  _mode = mode;
+  renderScreen();
+}
 
 // ── Public API ──
 
@@ -48,15 +62,16 @@ export function startDashboard(initialTab = 0) {
 
   term.on("key", (key) => {
     if (key === "CTRL_C" || key === "ESCAPE" || key === "q") {
+      if (_mode !== MODES.NAVIGATE) {
+        setMode(MODES.NAVIGATE);
+        return;
+      }
       exitDashboard();
       return;
     }
-    if (key === "LEFT" || key === "SHIFT_TAB") {
-      switchTab((_currentTab - 1 + TABS.length) % TABS.length);
-    } else if (key === "RIGHT" || key === "TAB") {
-      switchTab((_currentTab + 1 + TABS.length) % TABS.length);
-    } else if (key === "f5") {
-      switchTab(_currentTab);
+
+    if (_mode === MODES.NAVIGATE) {
+      handleNavigateKey(key);
     }
   });
 
@@ -109,7 +124,10 @@ async function renderScreen() {
   // Position the cursor at the start of the content area so async panels
   // cannot write to arbitrary locations on the screen.
   term.moveTo(1, CONTENT_START);
-  await drawContent();
+
+  const tabId = TABS[_currentTab].id;
+  const scrollOffset = _scrollOffsets[tabId] || 0;
+  await drawContent({ scrollOffset });
 
   // If the user has switched tabs since we started, do not paint a stale footer.
   if (gen !== _renderGen) return;
@@ -120,10 +138,77 @@ async function renderScreen() {
   try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
 }
 
-function drawContent() {
+function drawContent(state = {}) {
   const modPath = MOD_MAP[TABS[_currentTab].id];
   if (!modPath) return Promise.resolve();
-  return loadPanel(modPath);
+  return loadPanel(modPath, state);
+}
+
+function handleNavigateKey(key) {
+  if (key === "LEFT" || key === "SHIFT_TAB") {
+    switchTab((_currentTab - 1 + TABS.length) % TABS.length);
+  } else if (key === "RIGHT" || key === "TAB") {
+    switchTab((_currentTab + 1 + TABS.length) % TABS.length);
+  } else if (key === "f5") {
+    switchTab(_currentTab);
+  } else if (key === "UP") {
+    scrollContent(-1);
+  } else if (key === "DOWN") {
+    scrollContent(1);
+  }
+}
+
+function scrollContent(delta) {
+  const info = getPanelScrollInfo();
+  if (!info || !info.supportsScroll) return;
+
+  const viewportLines = contentMaxLines(term);
+  if (info.totalLines <= viewportLines) return;
+
+  const tabId = TABS[_currentTab].id;
+  const current = _scrollOffsets[tabId] || 0;
+  const maxOffset = Math.max(0, info.totalLines - viewportLines);
+  const next = Math.max(0, Math.min(maxOffset, current + delta));
+  if (next !== current) {
+    _scrollOffsets[tabId] = next;
+    renderScreen();
+  }
+}
+
+function getPanelScrollInfo() {
+  const modPath = MOD_MAP[TABS[_currentTab].id];
+  const mod = _loadedPanels[modPath];
+  if (!mod || typeof mod.getScrollInfo !== "function") return null;
+  try {
+    return mod.getScrollInfo();
+  } catch {
+    return null;
+  }
+}
+
+async function loadPanel(modPath, state = {}) {
+  const gen = ++_renderGen;
+  try {
+    let mod = _loadedPanels[modPath];
+    if (!mod) {
+      mod = await import(modPath);
+      _loadedPanels[modPath] = mod;
+    }
+    if (gen !== _renderGen) return;
+    if (mod && typeof mod.renderPanel === "function") {
+      await mod.renderPanel(term, state);
+      return;
+    }
+    term.styleReset();
+    term.bgBlack();
+    term.red("  Panel module missing renderPanel export\n");
+  } catch (err) {
+    if (gen !== _renderGen) return;
+    term.styleReset();
+    term.bgBlack();
+    term.red(`  Error loading panel: ${err.message}\n`);
+  }
+  term.styleReset();
 }
 
 function drawHeader() {
@@ -184,23 +269,4 @@ function drawFooter() {
   term.styleReset();
 }
 
-async function loadPanel(modPath) {
-  const gen = ++_renderGen;
-  try {
-    const mod = await import(modPath);
-    if (gen !== _renderGen) return;
-    if (mod && typeof mod.renderPanel === "function") {
-      await mod.renderPanel(term);
-      return;
-    }
-    term.styleReset();
-    term.bgBlack();
-    term.red("  Panel module missing renderPanel export\n");
-  } catch (err) {
-    if (gen !== _renderGen) return;
-    term.styleReset();
-    term.bgBlack();
-    term.red(`  Error loading panel: ${err.message}\n`);
-  }
-  term.styleReset();
-}
+// (end of framework)
