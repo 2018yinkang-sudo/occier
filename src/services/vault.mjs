@@ -24,7 +24,7 @@ export async function setCredential(key, value, type = "api_key") {
   }
   const store = createStore();
   await store.set(trimmedKey, { type, value, updatedAt: new Date().toISOString() });
-  return { ok: true, data: { key: trimmedKey, type, fingerprint: maskValue(value) } };
+  return { ok: true, data: { key: trimmedKey, type, fingerprint: maskValue(value, type) } };
 }
 
 export async function removeCredential(key) {

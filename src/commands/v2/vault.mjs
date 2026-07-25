@@ -52,7 +52,7 @@ export async function vaultSet() {
 
   await store.set(key.trim(), { type, value, updatedAt: new Date().toISOString() });
   console.log(``);
-  ok(`Credential '${key.trim()}' saved (${maskValue(value)})\n`);
+  ok(`Credential '${key.trim()}' saved (${maskValue(value, type)})\n`);
 }
 
 export async function vaultRemove() {
@@ -107,7 +107,7 @@ export async function vaultGet(...args) {
     console.error(`  ${c.boldWhite('Value')}: ${data.value}`);
     console.error(`\n  ${c.yellow('Warning:')} Plaintext value printed to stderr. Do not share or log this output.`);
   } else {
-    console.log(`  ${c.boldWhite('Value')}: ${maskValue(data.value)}`);
+    console.log(`  ${c.boldWhite('Value')}: ${maskValue(data.value, data.type)}`);
   }
   if (data.updatedAt) {
     console.log(`  ${c.boldWhite('Updated')}: ${data.updatedAt}`);

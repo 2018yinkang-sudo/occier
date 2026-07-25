@@ -226,29 +226,38 @@ export async function handleAction(_term, itemId) {
   if (itemId === "mirror-auto") {
     try {
       const { allMirrors } = await import("../../mirrors/registry.mjs");
+      const { testMirrorLatency } = await import("../../mirrors/speedtest.mjs");
+      const { switchMirror } = await import("../../services/network.mjs");
       const mirrors = await allMirrors();
-      for (const scope of ["npm", "pip", "apt", "node"]) {
+      let switched = 0;
+      const failures = [];
+
+      for (const scope of ["npm", "pip", "node"]) {
         const scopeMirrors = mirrors.filter((m) => m.scope === scope);
         if (scopeMirrors.length === 0) continue;
-        const results = await Promise.allSettled(
-          scopeMirrors.map((m) =>
-            import("../../mirrors/speedtest.mjs").then(({ testMirrorLatency }) =>
-              testMirrorLatency(m.id),
-            ),
-          ),
-        );
-        const valid = results
-          .filter((r) => r.status === "fulfilled")
-          .map((r) => r.value)
-          .filter((r) => r.status === "ok")
-          .sort((a, b) => a.ms - b.ms);
-        if (valid.length > 0) {
-          const { switchMirror } = await import("../../services/network.mjs");
-          await switchMirror(valid[0].mirrorId, scope);
+        try {
+          const results = await Promise.allSettled(
+            scopeMirrors.map((m) => testMirrorLatency(m.id)),
+          );
+          const valid = results
+            .filter((r) => r.status === "fulfilled")
+            .map((r) => r.value)
+            .filter((r) => r.status === "ok")
+            .sort((a, b) => a.ms - b.ms);
+          if (valid.length > 0) {
+            const result = await switchMirror(valid[0].mirrorId, scope);
+            if (result.ok) switched++;
+            else failures.push(`${scope}: ${result.error}`);
+          }
+        } catch (err) {
+          failures.push(`${scope}: ${err.message}`);
         }
       }
+
       _lastUpdate = 0;
-      return `Auto-selected best mirrors`;
+      const msg = `Switched ${switched} scopes`;
+      if (failures.length > 0) return `Error: ${msg}; failed: ${failures.join(", ")}`;
+      return switched > 0 ? msg : "No mirrors reachable";
     } catch (err) {
       return `Error: ${err.message}`;
     }

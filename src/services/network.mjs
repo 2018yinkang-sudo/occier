@@ -70,10 +70,11 @@ export async function testProxy(host, port, type = "http") {
     "-x", proxyUrl,
     "https://api.anthropic.com",
   ], { timeout: 8000 });
+  const ok = r.exitCode === 0 && r.stdout.startsWith("2");
   return {
-    ok: r.exitCode === 0 && r.stdout.startsWith("2"),
+    ok,
     latency: r.duration,
-    detail: r.ok ? null : (r.stderr || r.stdout || "Connection failed"),
+    detail: ok ? null : (r.stderr || r.stdout || "Connection failed"),
   };
 }
 
@@ -146,18 +147,18 @@ export async function switchMirror(mirrorId, scope) {
     const codename = codenameR.exitCode === 0 ? codenameR.stdout.trim() : "noble";
     const content = `deb ${url} ${codename} main restricted universe multiverse\n`;
 
-    const { mkdtemp, writeFile: wf } = await import("fs/promises");
+    const { mkdtemp, writeFile: wf, rm } = await import("fs/promises");
     const { join: pJoin } = await import("path");
     const { tmpdir } = await import("os");
     const tmpDir = await mkdtemp(pJoin(tmpdir(), "occier-apt-"));
-    const tmpPath = pJoin(tmpDir, "mirror.list");
-    await wf(tmpPath, content);
-
-    const r = await runWithSudo("cp", [tmpPath, "/etc/apt/sources.list.d/occier-mirror.list"]);
-    // Clean up temp dir
-    const { rm } = await import("fs/promises");
-    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    if (r.exitCode !== 0) return { ok: false, error: `apt source write failed: ${r.stderr || ""}` };
+    try {
+      const tmpPath = pJoin(tmpDir, "mirror.list");
+      await wf(tmpPath, content);
+      const r = await runWithSudo("cp", [tmpPath, "/etc/apt/sources.list.d/occier-mirror.list"]);
+      if (r.exitCode !== 0) return { ok: false, error: `apt source write failed: ${r.stderr || ""}` };
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   // Update registry state — serialize writes to avoid race
