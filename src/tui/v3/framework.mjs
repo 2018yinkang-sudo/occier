@@ -52,6 +52,7 @@ const MODES = {
 // ── Public API ──
 
 export function startDashboard(initialTab = 0) {
+  _state = createState();
   _state.currentTab = initialTab;
 
   term.fullscreen(true);
@@ -71,6 +72,13 @@ export function startDashboard(initialTab = 0) {
 
     if (key === "CTRL_C") {
       exitDashboard();
+      return;
+    }
+
+    if (_state.mode !== "focus" && (key === "ESCAPE" || key === "q")) {
+      // Let the active mode handle it (search adds 'q', log closes, input cancels)
+      const mode = MODES[_state.mode];
+      if (mode) mode.onKey(makeCtx(), key);
       return;
     }
 
@@ -146,6 +154,7 @@ function makeCtx() {
     invokeAction,
     submitInput,
     cancelInput,
+    showStatus,
     refreshTab,
     renderScreen,
   };
@@ -216,7 +225,7 @@ function drawLogOverlay() {
   const startRow = Math.max(3, h - 2 - overlayHeight);
 
   // Clear overlay area
-  for (let r = startRow; r <= startRow + overlayHeight; r++) {
+  for (let r = startRow; r < startRow + overlayHeight; r++) {
     term.moveTo(1, r);
     term.styleReset();
     term.bgBlack();
@@ -245,7 +254,7 @@ function drawLogOverlay() {
   }
 
   // Help line
-  term.moveTo(1, startRow + overlayHeight);
+  term.moveTo(1, startRow + overlayHeight - 1);
   term.styleReset();
   term.bgGray();
   term.brightCyan("  Esc / q / l / Enter to close  ".padEnd(w));
@@ -318,7 +327,14 @@ function drawFooter() {
   term.styleReset();
   term[theme.chrome.footer.bg]();
 
-  const text = "  ↑↓ Move · Enter Action · ←→ Tab · PgUp/PgDn · Home/End · F5 Refresh · q Quit  ";
+  const full = "  ↑↓ Move · Enter Action · ←→ Tab · PgUp/PgDn · Home/End · F5 Refresh · q Quit  ";
+  let text = full;
+  if (w < full.length) {
+    text = "  ↑↓ Move · Enter Action · ←→ Tab · F5 Refresh · q Quit  ";
+  }
+  if (w < text.length) {
+    text = "  ↑↓ Move · Enter Action · q Quit  ";
+  }
 
   term[theme.chrome.footer.fg](text);
   const pad = Math.max(0, w - text.length);
@@ -397,8 +413,9 @@ function drawInputModal() {
   term[theme.modal.border.fg](theme.modal.border.v);
   term[theme.modal.body.bg]();
   if (_state.input.error) {
-    term.red(` ${_state.input.error}`.slice(0, inner));
-    term.black(" ".repeat(Math.max(0, inner - 2 - _state.input.error.length)));
+    const errPrefix = ` ${_state.input.error}`;
+    term.red(errPrefix.slice(0, inner));
+    term.black(" ".repeat(Math.max(0, inner - errPrefix.length)));
   } else {
     term[theme.modal.hint.fg](" Enter submit · Esc cancel ".padEnd(inner));
   }
@@ -413,7 +430,7 @@ function drawInputModal() {
   );
 
   // Position cursor inside the input field
-  term.moveTo(cursorCol + 1, row + 1);
+  term.moveTo(cursorCol, row + 1);
   term.hideCursor(false);
 }
 
@@ -441,7 +458,7 @@ async function loadPanel(tabId, scrollOffset, gen) {
   const budget = makeLineBudget(term, scrollOffset);
 
   try {
-    await mod.renderPanel(term, { scrollOffset, cursorItemId, mode: _state.mode }, budget);
+    await mod.renderPanel(term, { scrollOffset, cursorItemId, mode: _state.mode, forceRefresh: _state.forceRefresh }, budget);
   } catch (err) {
     if (gen !== _renderGen) return;
     term.moveTo(1, CONTENT_START);
@@ -578,7 +595,7 @@ async function submitInput() {
   const continueFn = _state.input.continue;
   const value = _state.input.buffer;
   _state.input = null;
-  _state.mode = "focus";
+  setMode("focus");
 
   if (typeof continueFn !== "function") {
     renderScreen();
@@ -635,9 +652,8 @@ function currentTabId() {
   return TABS[_state.currentTab].id;
 }
 
-function refreshTab() {
-  // Force a re-render of the current tab. Panels with TTL caches can refresh
-  // themselves by checking the passed state/mode; for Phase 1 we simply
-  // re-render.
-  renderScreen();
+async function refreshTab() {
+  _state.forceRefresh = true;
+  await renderScreen();
+  _state.forceRefresh = false;
 }

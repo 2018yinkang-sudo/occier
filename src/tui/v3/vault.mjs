@@ -6,7 +6,7 @@ let _cache = null;
 
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
-  if (now - _lastUpdate > 10000 || !_cache) {
+  if (now - _lastUpdate > 10000 || !_cache || state.forceRefresh) {
     _cache = await listCredentials();
     _lastUpdate = now;
   }
@@ -15,9 +15,9 @@ export async function renderPanel(term, state, budget) {
   const selectedId = state.cursorItemId ?? null;
   const draw = (id, ...parts) => {
     if (id && selectedId === id) {
-      selectedLine(term, ...parts);
+      selectedLine(term, { text: "▸ " }, ...parts);
     } else {
-      line(term, ...parts);
+      line(term, { text: "› ", fg: "brightWhite" }, ...parts);
     }
   };
 

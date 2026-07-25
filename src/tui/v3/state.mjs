@@ -12,6 +12,8 @@ export function createState() {
     statusHistory: [], // array of status objects
     input: null,       // { spec, buffer, cursor, error }
     actionInFlight: false,
+    forceRefresh: false,
+    search: null,      // { query } | null
   };
 }
 

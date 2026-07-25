@@ -9,7 +9,7 @@ let _cache = { tools: null, providers: null, network: null, vault: null };
 
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
-  if (now - _lastUpdate > 10000 || !_cache.tools) {
+  if (now - _lastUpdate > 10000 || !_cache.tools || state.forceRefresh) {
     _cache.tools = await getToolStatus();
     _cache.providers = await getProviderStatus();
     _cache.network = await getNetworkStatus();
@@ -22,9 +22,9 @@ export async function renderPanel(term, state, budget) {
   const selectedId = state.cursorItemId ?? null;
   const draw = (id, ...parts) => {
     if (id && selectedId === id) {
-      selectedLine(term, ...parts);
+      selectedLine(term, { text: "▸ " }, ...parts);
     } else {
-      line(term, ...parts);
+      line(term, { text: "› ", fg: "brightWhite" }, ...parts);
     }
   };
 

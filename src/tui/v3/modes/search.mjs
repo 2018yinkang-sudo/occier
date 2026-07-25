@@ -22,6 +22,9 @@ export const searchMode = {
       if (match) {
         ctx.state.cursor[ctx.currentTabId()] = match.id;
         ctx.ensureCursorVisible();
+      } else if (q) {
+        ctx.showStatus("No match", "info");
+        ctx.renderScreen();
       }
       ctx.setMode("focus");
       return;
