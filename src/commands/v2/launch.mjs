@@ -88,7 +88,9 @@ export async function runLaunch(args) {
   } else if (tool === 'opencode') {
     const store = createStore();
     const { allProviders } = await import('../../registry/providers.mjs');
+    const { clearProviderEnv } = await import('../../launch.mjs');
     const envVars = { ...process.env };
+    clearProviderEnv(envVars);
 
     if (!providerId) {
       const entries = await store.list();

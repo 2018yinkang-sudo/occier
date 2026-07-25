@@ -86,8 +86,13 @@ function enqueueWrite(filePath, task) {
 
 async function atomicWriteFile(filePath, data, options) {
   const tmp = `${filePath}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`;
-  await writeFile(tmp, data, options);
-  await rename(tmp, filePath);
+  try {
+    await writeFile(tmp, data, options);
+    await rename(tmp, filePath);
+  } catch (err) {
+    await unlink(tmp).catch(() => {});
+    throw err;
+  }
 }
 
 // Lock + queue: the lock is acquired INSIDE the queue task so that
@@ -169,8 +174,8 @@ export function getDeviceFingerprint() {
 
 export function maskValue(value) {
   if (!value) return "<not set>";
-  if (value.length <= 8) return "****";
-  return value.slice(0, 4) + "****" + value.slice(-4);
+  if (value.length <= 4) return "****";
+  return "****" + value.slice(-4);
 }
 
 // ── legacy env parsing ──
@@ -500,6 +505,7 @@ export class EncryptedFileStore extends CredentialStore {
       );
       this.masterKey = newMasterKey;
       this._needsMigration = false;
+      this._rawPassphrase = null;
 
       // Encrypt with new key
       const salt = randomBytes(SALT_LEN);
@@ -611,7 +617,7 @@ export async function reEncryptVault(oldPassphrase, newPassphrase, filePath = VA
     // Success — remove backup
     await unlink(backupPath).catch(() => {});
 
-    return { ok: true, data };
+    return { ok: true };
   } catch (err) {
     // Failure — restore backup
     try {
@@ -619,7 +625,7 @@ export async function reEncryptVault(oldPassphrase, newPassphrase, filePath = VA
       await restoreRename(backupPath, filePath);
       if (oldMeta) await writeVaultMeta(filePath, oldMeta);
     } catch { /* best effort restore */ }
-    return { ok: false, error: err.message, data };
+    return { ok: false, error: err.message };
   }
 }
 

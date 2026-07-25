@@ -102,12 +102,14 @@ export async function vaultGet(...args) {
   divider();
   console.log(`  ${c.boldWhite('Credential')}: ${key}`);
   console.log(`  ${c.boldWhite('Type')}: ${data.type || 'api_key'}`);
-  console.log(`  ${c.boldWhite('Value')}: ${reveal ? data.value : maskValue(data.value)}`);
+  if (reveal) {
+    console.error(`  ${c.boldWhite('Value')}: ${data.value}`);
+    console.error(`\n  ${c.yellow('Warning:')} Plaintext value printed to stderr. Do not share or log this output.`);
+  } else {
+    console.log(`  ${c.boldWhite('Value')}: ${maskValue(data.value)}`);
+  }
   if (data.updatedAt) {
     console.log(`  ${c.boldWhite('Updated')}: ${data.updatedAt}`);
-  }
-  if (reveal) {
-    console.log(`\n  ${c.yellow('Warning:')} Plaintext value shown above. Do not share or log this output.`);
   }
   console.log(``);
   divider();

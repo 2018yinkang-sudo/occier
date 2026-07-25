@@ -183,11 +183,11 @@ describe("maskValue", () => {
 
   it("masks short values", () => {
     expect(maskValue("abc")).toBe("****");
-    expect(maskValue("12345678")).toBe("****");
+    expect(maskValue("1234")).toBe("****");
   });
 
-  it("masks long values keeping first and last 4", () => {
-    expect(maskValue("sk-abcdefgh12345678")).toBe("sk-a****5678");
+  it("masks long values showing only last 4", () => {
+    expect(maskValue("sk-abcdefgh12345678")).toBe("****5678");
   });
 });
 

@@ -35,7 +35,7 @@ describe("services/vault — setCredential and get", () => {
     expect(entry).toBeTruthy();
     expect(entry.type).toBe("api_key");
     expect(entry.value).toBe("sk-1234567890abcdef");
-    expect(maskValue(entry.value)).toBe("sk-1****cdef");
+    expect(maskValue(entry.value)).toBe("****cdef");
   });
 
   it("returns null for missing key", async () => {
@@ -68,7 +68,7 @@ describe("services/vault — setCredential service wrapper", () => {
     expect(result.ok).toBe(true);
     expect(result.data.key).toBe("svc_test");
     expect(result.data.type).toBe("api_key");
-    expect(result.data.fingerprint).toBe("my-s****alue");
+    expect(result.data.fingerprint).toBe("****alue");
   });
 
   it("rejects empty key", async () => {

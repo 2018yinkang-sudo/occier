@@ -48,15 +48,18 @@ export async function readProvidersEnv() {
   }
 
   // Bridge: surface v2 vault credentials (lowercase keys) to v1 consumers
-  // (original-case keys). The env file wins on conflicts.
+  // (original-case keys). Only read provider-specific keys, not the entire vault.
   try {
     const { createStore } = await import('./store/credential-store.mjs');
+    const { allProviders } = await import('./registry/providers.mjs');
     const store = createStore();
-    const vault = await store.readAll();
-    for (const [key, entry] of Object.entries(vault)) {
-      const upper = key.toUpperCase();
-      if (!(upper in entries) && entry && typeof entry.value === 'string') {
-        entries[upper] = entry.value;
+    for (const p of allProviders()) {
+      const lowerKey = p.envVarName.toLowerCase();
+      if (!(p.envVarName in entries)) {
+        const data = await store.get(lowerKey);
+        if (data && typeof data.value === 'string') {
+          entries[p.envVarName] = data.value;
+        }
       }
     }
   } catch {
@@ -64,22 +67,6 @@ export async function readProvidersEnv() {
   }
 
   return entries;
-}
-
-export async function writeProvidersEnv(entries) {
-  await ensureConfigDir();
-  const lines = [
-    '# Claude Code provider credentials',
-    '# Managed by occier',
-    '# Never commit this file.',
-    '# Permissions: 600',
-    '',
-  ];
-  for (const [key, val] of Object.entries(entries)) {
-    lines.push(`${key}="${val}"`);
-  }
-  lines.push('');
-  await writeFile(ENV_FILE, lines.join('\n'), { mode: 0o600 });
 }
 
 export async function providersEnvExists() {

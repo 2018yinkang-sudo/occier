@@ -27,6 +27,12 @@ export async function probeModel(provider, apiKey, modelId) {
     return result;
   }
 
+  if (!provider.healthUrl.startsWith("https://")) {
+    const result = { status: ModelStatus.UNKNOWN, ms: 0, detail: "Refusing to send credentials over non-HTTPS endpoint", testedAt: new Date().toISOString() };
+    probeCache.set(cacheKey, result);
+    return result;
+  }
+
   let url = provider.healthUrl;
   if (provider.protocol === "openai" && url.endsWith("/v1/models")) {
     url = url.replace(/\/v1\/models$/, "/v1/chat/completions");

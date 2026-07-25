@@ -7,6 +7,7 @@ export function clearProviderEnv(env) {
     'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL',
     'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_EFFORT_LEVEL',
     'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'ENABLE_TOOL_SEARCH',
+    'OCCIER_PASSPHRASE',
   ];
   for (const k of keys) {
     delete env[k];
