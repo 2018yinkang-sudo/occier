@@ -9,22 +9,33 @@ const pkg = JSON.parse(
 
 // Minimal mock of terminal-kit's terminal object.
 const calls = [];
-const term = {
-  width: 80,
-  height: 24,
-  on() {},
-  moveTo() {},
-  styleReset() {},
-  fullscreen() {},
-  hideCursor() {},
-  grabInput() {},
-  clear() {},
-  eraseDisplay() {},
-  eraseDisplayAfter() {},
-};
+
+const term = Object.assign(
+  // Must be callable: renderScreen uses term("\n") and term("text").
+  function termFn(s) {
+    if (s !== undefined) {
+      calls.push({ prop: "call", args: [s] });
+      term._text = (term._text || "") + String(s);
+    }
+  },
+  {
+    width: 80,
+    height: 24,
+    on() {},
+    moveTo() {},
+    styleReset() {},
+    fullscreen() {},
+    hideCursor() {},
+    grabInput() {},
+    clear() {},
+    eraseDisplay() {},
+    eraseDisplayAfter() {},
+    bold() {},
+  },
+);
 for (const prop of [
   "white", "black", "red", "cyan", "gray",
-  "bold", "brightGreen", "yellow", "green",
+  "brightGreen", "yellow", "green",
   "brightCyan", "brightWhite",
   "bgGray", "bgBlack", "bgBrightCyan", "bgBrightWhite",
 ]) {
@@ -46,13 +57,13 @@ beforeAll(async () => {
 });
 
 describe("TUI framework rendering", () => {
-  it("switchTab calls renderScreen which does NOT use term.clear", () => {
+  it("switchTab calls renderScreen which uses term.clear", () => {
     const clearFn = vi.fn();
     const origClear = term.clear;
     term.clear = clearFn;
     calls.length = 0;
     mod.switchTab(0);
-    expect(clearFn).not.toHaveBeenCalled();
+    expect(clearFn).toHaveBeenCalledOnce();
     term.clear = origClear;
   });
 

@@ -85,40 +85,24 @@ export function getCurrentTab() {
   return TABS[_currentTab].id;
 }
 
-// ── Internal rendering (flicker-free: no term.clear, line-by-line overwrite) ──
+// ── Internal rendering ──
 
 function renderScreen() {
   _renderGen++;
 
-  const w = typeof term.width === "number" && isFinite(term.width) ? term.width : 80;
-  const h = typeof term.height === "number" && isFinite(term.height) ? term.height : 24;
+  // term.clear() on the alternate screen (fullscreen) is a buffer swap and
+  // does not flicker — it simply replaces the visible content in one go.
+  term.clear();
 
-  // Header — row 1, full-width bgBrightCyan
-  term.moveTo(1, 1);
-  drawHeader(w);
-
-  // Tab bar — row 2, full-width bgGray
-  term.moveTo(1, 2);
-  drawTabBar(w);
-
-  // Spacer row — row 3, bgBlack fills the default background for content
-  term.moveTo(1, 3);
-  term.bgBlack();
-  term.white(" ".repeat(w));
-
-  // Clear old content (rows 4+) NOW so stale panel text does not linger
-  // while the new panel is loading asynchronously (ghosting fix).
-  term.moveTo(1, 4);
-  try { term.eraseDisplayAfter(); } catch { /* non-TTY: erase not available, skip */ }
-
-  // Content — rows 4+, async
+  drawHeader();
+  drawTabBar();
+  term("\n");
   drawContent();
-
-  // Footer — last row
-  drawFooter(w, h);
+  drawFooter();
 }
 
-function drawHeader(w) {
+function drawHeader() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
   const tab = TABS[_currentTab];
   term.styleReset();
   term.bgBrightCyan();
@@ -133,7 +117,8 @@ function drawHeader(w) {
   term.styleReset();
 }
 
-function drawTabBar(w) {
+function drawTabBar() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
   term.styleReset();
   term.bgGray();
 
@@ -159,7 +144,9 @@ function drawTabBar(w) {
   if (pad > 0) term.white(" ".repeat(pad));
 }
 
-function drawFooter(w, h) {
+function drawFooter() {
+  const w = Number.isFinite(term.width) ? term.width : 80;
+  const h = Number.isFinite(term.height) ? term.height : 24;
   term.moveTo(1, h);
   term.styleReset();
   term.bgGray();
