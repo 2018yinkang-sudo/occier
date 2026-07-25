@@ -2,19 +2,6 @@ import { readFileSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 import { runString } from "../exec/runner.mjs";
 
-export function detectWslVersion() {
-  try {
-    const content = readFileSync("/proc/version", "utf-8").toLowerCase();
-    if (content.includes("wsl2")) return 2;
-    if (content.includes("microsoft") || content.includes("wsl")) return 1;
-    return null;
-  } catch { return null; }
-}
-
-export function isWSL() {
-  return detectWslVersion() !== null;
-}
-
 export function readWindowsWslConfig() {
   const winHome = process.env.USERPROFILE;
   if (!winHome) return null;

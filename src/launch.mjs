@@ -46,7 +46,7 @@ export function launchClaude(providerEnvVars) {
     process.exit(1);
   });
 
-  child.on('exit', (code) => {
-    process.exit(code ?? 0);
+  child.on('exit', (code, signal) => {
+    process.exit(code ?? (signal ? 1 : 0));
   });
 }

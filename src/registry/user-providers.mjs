@@ -23,12 +23,28 @@ export async function loadUserProviders() {
 
   try {
     await access(filePath, constants.R_OK);
-    const data = JSON.parse(await readFile(filePath, "utf-8"));
-    _providers.length = 0;
-    for (const p of data) {
-      _providers.push(p);
-    }
-  } catch { /* no user providers file */ }
+  } catch {
+    return;
+  }
+
+  const raw = await readFile(filePath, "utf-8");
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    process.stderr.write(`\n\x1b[31mError:\x1b[0m Failed to parse user providers: ${err.message}\n\n`);
+    return;
+  }
+
+  if (!Array.isArray(data)) {
+    process.stderr.write(`\n\x1b[33m⚠\x1b[0m  user-providers.json is not an array — ignoring\n\n`);
+    return;
+  }
+
+  _providers.length = 0;
+  for (const p of data) {
+    _providers.push(p);
+  }
 }
 
 export async function saveUserProviders() {

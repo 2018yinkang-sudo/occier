@@ -89,8 +89,4 @@ export async function configExists() {
   }
 }
 
-export function maskKey(key) {
-  if (!key) return '<not set>';
-  if (key.length <= 8) return '****';
-  return key.slice(0, 4) + '****' + key.slice(-4);
-}
+export { maskValue as maskKey } from './store/credential-store.mjs';

@@ -38,7 +38,8 @@ export async function diffTemplate(templateId, targetPath) {
 
   if (!currentContent) return { hasDiff: true, lines: [{ type: "add", text: t.content }] };
 
-  const r = await runString("diff", ["-u", "--label", "current", "--label", templateId], {
+  const label = templateId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const r = await runString("diff", ["-u", "--label", "current", "--label", label], {
     input: `${currentContent}\n${t.content}`,
     timeout: 5000,
   });

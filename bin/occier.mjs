@@ -6,7 +6,7 @@ import { join } from 'path';
 async function checkPath() {
   const HOME = homedir();
   const binDir = join(HOME, '.local', 'bin');
-  if (!process.env.PATH.split(':').includes(binDir)) {
+  if (!(process.env.PATH || '').split(':').includes(binDir)) {
     process.stderr.write('\n');
     process.stderr.write('  \x1b[33m⚠\x1b[0m  PATH does not include \x1b[90m~/.local/bin\x1b[0m.\n');
     process.stderr.write('  \x1b[33m⚠\x1b[0m  The \x1b[36moccier\x1b[0m command may not be found in new terminals.\n');
@@ -16,7 +16,7 @@ async function checkPath() {
 }
 
 async function main() {
-  checkPath().catch(() => {});
+  void checkPath().catch(() => { /* non-critical PATH check, suppress errors */ });
   const { route } = await import('../src/cli.mjs');
   const args = process.argv.slice(2);
   await route(args);

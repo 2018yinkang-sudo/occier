@@ -77,7 +77,12 @@ export function runString(cmd, args = [], opts = {}) {
 }
 
 export function hasCommand(cmd) {
-  return run("which", [cmd], { timeout: 3000 }).then(
+  if (process.platform === "win32") {
+    return run("where", [cmd], { timeout: 3000 }).then(
+      (r) => r.exitCode === 0,
+    );
+  }
+  return run("command", ["-v", cmd], { timeout: 3000 }).then(
     (r) => r.exitCode === 0,
   );
 }

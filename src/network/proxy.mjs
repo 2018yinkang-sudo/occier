@@ -48,7 +48,9 @@ export async function detectProxyType(host = "127.0.0.1", port) {
 }
 
 export function buildProxyEnv(protocol, host, port, username, password) {
-  const auth = username && password ? `${username}:${password}@` : "";
+  const auth = username && password
+    ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
+    : "";
   let url;
   if (protocol === "http" || protocol === "https") {
     url = `http://${auth}${host}:${port}`;
@@ -69,13 +71,17 @@ export function buildProxyEnv(protocol, host, port, username, password) {
 
 export function buildShellRcBlock(protocol, host, port, username, password) {
   const env = buildProxyEnv(protocol, host, port, username, password);
+  const safeUrl = env.all_proxy.replace(/[$`\\"!]/g, "\\$&");
+  const safeHttpUrl = env.http_proxy.replace(/[$`\\"!]/g, "\\$&");
+  const safeHost = String(host).replace(/[$`\\"!]/g, "\\$&");
+  const safePort = String(port).replace(/[$`\\"!]/g, "\\$&");
   const lines = [
     SHELL_MARKER_START,
     `# Proxy configured by occier`,
-    `host_proxy="${host}"`,
-    `proxy_port="${port}"`,
-    `proxy_url="${env.all_proxy}"`,
-    `proxy_http_url="${env.http_proxy}"`,
+    `host_proxy="${safeHost}"`,
+    `proxy_port="${safePort}"`,
+    `proxy_url="${safeUrl}"`,
+    `proxy_http_url="${safeHttpUrl}"`,
     "",
     `proxy_on() {`,
     `  export http_proxy="\${proxy_http_url}"`,

@@ -1,5 +1,5 @@
 import { password, input, select, confirm } from '@inquirer/prompts';
-import { c, ok, divider } from '../tui.mjs';
+import { c, ok, divider } from '../../tui.mjs';
 import { createStore, maskValue } from '../../store/credential-store.mjs';
 
 export async function vaultList() {

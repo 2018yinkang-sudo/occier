@@ -1,4 +1,3 @@
-import { runString } from "../exec/runner.mjs";
 import { getProvider } from "../registry/providers.mjs";
 import { createStore } from "../store/credential-store.mjs";
 
@@ -37,56 +36,70 @@ export async function probeModel(provider, apiKey, modelId) {
     return result;
   }
 
-  const r = await runString("curl", [
-    "-s", "-w", "\n%{http_code}",
-    "--connect-timeout", "5",
-    "--max-time", "8",
-    "-H", "Content-Type: application/json",
-    "-H", `x-api-key: ${apiKey}`,
-    "-d", JSON.stringify({
-      model: modelId || provider.defaultModel,
-      max_tokens: 1,
-      messages: [{ role: "user", content: "ping" }],
-    }),
-    `${provider.healthUrl.replace(/\/v1\/messages$/, "/v1/chat/completions")}`,
-  ], { timeout: 10000 });
+  let url = provider.healthUrl;
+  if (provider.protocol === "openai" && url.endsWith("/v1/models")) {
+    url = url.replace(/\/v1\/models$/, "/v1/chat/completions");
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  let httpCode = 0;
+  let body = "";
+  let errorDetail = "";
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        model: modelId || provider.defaultModel,
+        max_tokens: 1,
+        messages: [{ role: "user", content: "ping" }],
+      }),
+      signal: controller.signal,
+    });
+    httpCode = res.status;
+    body = await res.text().catch(() => "");
+  } catch (err) {
+    if (err.name === "AbortError") {
+      errorDetail = "timeout";
+    } else {
+      errorDetail = err.message || "Connection failed";
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 
   const ms = Date.now() - start;
   let status;
   let detail;
 
-  if (r.exitCode === -1) {
-    status = ModelStatus.NETWORK_ERROR;
-    detail = r.stderr || "Connection failed";
-  } else if (r.exitCode !== 0) {
-    status = ModelStatus.NETWORK_ERROR;
-    detail = r.stderr || `Exit code ${r.exitCode}`;
-  } else {
-    const lines = r.stdout.split("\n");
-    const httpCode = parseInt(lines.pop() || "0");
-    const body = lines.join("\n");
-
-    if (httpCode === 200) {
-      status = ModelStatus.AVAILABLE;
-      detail = "OK";
-    } else if (httpCode === 401 || httpCode === 403) {
-      status = ModelStatus.AUTH_FAILED;
-      detail = `HTTP ${httpCode}: Invalid API key`;
-    } else if (httpCode === 429) {
-      if (body.includes("quota") || body.includes("credit") || body.includes("balance") || body.includes("insufficient")) {
-        status = ModelStatus.NO_BALANCE;
-        detail = "Insufficient balance or quota";
-      } else {
-        status = ModelStatus.RATE_LIMITED;
-        detail = "Rate limited";
-      }
-    } else if (httpCode >= 500) {
-      status = ModelStatus.UNAVAILABLE;
-      detail = `Server error HTTP ${httpCode}`;
+  if (errorDetail) {
+    status = errorDetail === "timeout" ? ModelStatus.NETWORK_ERROR : ModelStatus.NETWORK_ERROR;
+    detail = errorDetail;
+  } else if (httpCode === 200) {
+    status = ModelStatus.AVAILABLE;
+    detail = "OK";
+  } else if (httpCode === 401 || httpCode === 403) {
+    status = ModelStatus.AUTH_FAILED;
+    detail = `HTTP ${httpCode}: Invalid API key`;
+  } else if (httpCode === 429) {
+    if (body.includes("quota") || body.includes("credit") || body.includes("balance") || body.includes("insufficient")) {
+      status = ModelStatus.NO_BALANCE;
+      detail = "Insufficient balance or quota";
     } else {
-      status = ModelStatus.UNKNOWN;
-      detail = `HTTP ${httpCode}: ${body.slice(0, 100)}`;
+      status = ModelStatus.RATE_LIMITED;
+      detail = "Rate limited";
     }
+  } else if (httpCode >= 500) {
+    status = ModelStatus.UNAVAILABLE;
+    detail = `Server error HTTP ${httpCode}`;
+  } else {
+    status = ModelStatus.UNKNOWN;
+    detail = `HTTP ${httpCode}: ${body.slice(0, 100)}`;
   }
 
   const result = { status, ms, detail, testedAt: new Date().toISOString() };

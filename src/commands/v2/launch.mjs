@@ -1,4 +1,4 @@
-import { c } from '../tui.mjs';
+import { c } from '../../tui.mjs';
 import { hasCommand } from '../../exec/runner.mjs';
 import { launchClaude } from '../../launch.mjs';
 import { createStore } from '../../store/credential-store.mjs';
@@ -70,7 +70,6 @@ export async function runLaunch(args) {
     console.log(`  Provider: ${c.cyan(provider.label)}  |  Model: ${c.gray(provider.defaultModel || 'default')}`);
     console.log(``);
 
-    process.env = { ...process.env, ...envVars };
     launchClaude(envVars);
   } else if (tool === 'opencode') {
     console.log(`  ${c.cyan('Starting OpenCode...')}`);

@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir, access } from "fs/promises";
 import { readFileSync } from "fs";
 import { constants } from "fs";
-import { randomBytes, createCipheriv, createDecipheriv, createHash } from "crypto";
+import { randomBytes, createCipheriv, createDecipheriv, pbkdf2Sync } from "crypto";
 import { homedir, hostname } from "os";
 import { join } from "path";
 
@@ -129,25 +129,33 @@ export class EncryptedFileStore extends CredentialStore {
   async _readEncrypted() {
     try {
       await access(this.filePath, constants.R_OK);
-      const raw = await readFile(this.filePath);
-      const SALT_LEN = 32;
-      const IV_LEN = 16;
-      const TAG_LEN = 16;
-      const salt = raw.subarray(0, SALT_LEN);
-      const iv = raw.subarray(SALT_LEN, SALT_LEN + IV_LEN);
-      const tag = raw.subarray(raw.length - TAG_LEN);
-      const ciphertext = raw.subarray(SALT_LEN + IV_LEN, raw.length - TAG_LEN);
-      const key = deriveKey(this.masterKey, salt);
-      const decipher = createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(tag);
-      const decrypted = Buffer.concat([
-        decipher.update(ciphertext),
-        decipher.final(),
-      ]);
-      return JSON.parse(decrypted.toString("utf-8"));
     } catch {
       return {};
     }
+
+    const raw = await readFile(this.filePath);
+    const SALT_LEN = 32;
+    const IV_LEN = 16;
+    const TAG_LEN = 16;
+
+    if (raw.length < SALT_LEN + IV_LEN + TAG_LEN + 1) {
+      const msg = "Vault file is too short — may be corrupted";
+      process.stderr.write(`\n\x1b[33m⚠\x1b[0m  ${msg}\n\n`);
+      throw new Error(msg);
+    }
+
+    const salt = raw.subarray(0, SALT_LEN);
+    const iv = raw.subarray(SALT_LEN, SALT_LEN + IV_LEN);
+    const tag = raw.subarray(raw.length - TAG_LEN);
+    const ciphertext = raw.subarray(SALT_LEN + IV_LEN, raw.length - TAG_LEN);
+    const key = deriveKey(this.masterKey, salt);
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
+    return JSON.parse(decrypted.toString("utf-8"));
   }
 
   async _writeEncrypted(data) {
@@ -167,9 +175,7 @@ export class EncryptedFileStore extends CredentialStore {
 }
 
 function deriveKey(masterKey, salt) {
-  return createHash("sha256")
-    .update(masterKey + salt.toString("hex"))
-    .digest();
+  return pbkdf2Sync(masterKey, salt, 100000, 32, "sha256");
 }
 
 export function getDeviceFingerprint() {
@@ -190,7 +196,8 @@ export function getDeviceFingerprint() {
 }
 
 export function deriveMasterKey(passphrase) {
-  return createHash("sha256").update(passphrase).digest("hex").slice(0, 32);
+  return pbkdf2Sync(passphrase, "occier-vault-salt", 100000, 32, "sha256")
+    .toString("hex");
 }
 
 export function maskValue(value) {

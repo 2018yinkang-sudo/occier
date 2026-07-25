@@ -40,7 +40,10 @@ export async function testMirrorsByScope(scope) {
 export async function autoSwitchMirror(scope, thresholdMs = 500) {
   const { mirrorsByScope, enableMirror: enable, disableMirror: disable } = await import("./registry.mjs");
   const mirrors = mirrorsByScope(scope);
-  const results = await Promise.all(mirrors.map((m) => testMirrorLatency(m.id)));
+  const settled = await Promise.allSettled(mirrors.map((m) => testMirrorLatency(m.id)));
+  const results = settled
+    .filter((s) => s.status === "fulfilled")
+    .map((s) => s.value);
   const best = results.filter((r) => r.status === "ok" && r.ms < thresholdMs)
     .sort((a, b) => a.ms - b.ms);
 

@@ -1,5 +1,7 @@
 import { confirm } from '@inquirer/prompts';
 import { rm, readFile, writeFile, readdir, rmdir } from 'fs/promises';
+import { homedir } from 'os';
+import { join } from 'path';
 import { ENV_FILE, CONFIG_FILE, CC_CONFIG_DIR } from '../paths.mjs';
 import { shellRcPath } from '../paths.mjs';
 import { c } from '../tui.mjs';
@@ -48,8 +50,14 @@ export async function runRemove() {
   const shellRc = shellRcPath();
   try {
     const content = await readFile(shellRc, 'utf-8');
-    if (content.includes('export PATH="$HOME/.local/bin:$PATH"')) {
-      const newContent = content.replace(/export PATH="\$HOME\/\.local\/bin:\$PATH"\n?/g, '');
+    const binDir = join(homedir(), '.local', 'bin');
+    const escapedBin = binDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(
+      `^(# Added by occier\\n)?export PATH="${escapedBin}:\\$PATH"\\n?`,
+      "m",
+    );
+    if (pattern.test(content) || content.includes('export PATH="$HOME/.local/bin:$PATH"')) {
+      const newContent = content.replace(pattern, '').replace(/export PATH="\$HOME\/\.local\/bin:\$PATH"\n?/g, '');
       await writeFile(shellRc, newContent);
       console.log(`  ${c.green('✓')} Removed PATH entry from ${shellRc.split('/').pop()}`);
     } else {

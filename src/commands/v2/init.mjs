@@ -1,4 +1,4 @@
-import { c, banner, ok, warn, fail, info, divider } from '../tui.mjs';
+import { c, banner, ok, warn, fail, info, divider } from '../../tui.mjs';
 import { writeConfig, createDefaultConfig, migrateV1 } from '../../schema/config.mjs';
 import { detectAll } from '../../env/detect.mjs';
 

@@ -63,8 +63,8 @@ export async function route(args) {
     const lines = [
       `  ${c.boldCyan('Dashboard')}`,
       ``,
-      `    ${env.networkConfigured ? c.green('●') : c.yellow('○')} Network    ${env.isWSL ? `WSL ${env.wslNetworkMode}` : 'direct'}  |  ${Object.keys(env.proxy).filter(k => env.proxy[k]).length > 0 ? 'proxy set' : 'no proxy'}`,
-      `    ${c.green('●')} Prov.      ${env.claude.installed ? 'claude' : ''} ${env.opencode.installed ? '/ opencode' : ''}`,
+      `    ${env.networkConfigured ? c.green('●') : c.yellow('○')} Network    ${env.isWSL ? `WSL ${env.wslNetworkMode || 'unknown'}` : 'direct'}  |  ${Object.keys(env.proxy).filter(k => env.proxy[k]).length > 0 ? 'proxy set' : 'no proxy'}`,
+      `    ${(env.claude.installed || env.opencode.installed) ? c.green('●') : c.gray('○')} Prov.      ${env.claude.installed ? 'claude' : ''} ${env.opencode.installed ? '/ opencode' : ''}`,
       `    ${env.gh.loggedIn ? c.green('●') : c.gray('○')} GitHub     ${env.gh.loggedIn ? c.green('logged in') : c.gray('not logged in')}`,
       ``,
       `  ── ${c.boldWhite('Quick Actions')} ──`,
@@ -325,6 +325,7 @@ export async function route(args) {
       const id = args[2];
       if (!id) { console.log(`  Usage: occier template preview <id>\n`); return; }
       const t = getTemplate(id);
+      if (!t) { console.log(`  ${c.red('Error:')} Template '${id}' not found\n`); return; }
       console.log(`\n  ${c.boldCyan(t.name)} — ${t.description}\n`);
       console.log(t.content.split('\n').slice(0, 15).map((l) => `  ${l}`).join('\n'));
       if (t.content.split('\n').length > 15) console.log(`  ${c.gray('...')}`);

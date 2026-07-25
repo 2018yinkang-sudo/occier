@@ -1,5 +1,5 @@
 import { select } from '@inquirer/prompts';
-import { c, ok, fail, divider } from '../tui.mjs';
+import { c, ok, fail, divider } from '../../tui.mjs';
 import { installClaude, updateClaude } from '../../tools/claude/install.mjs';
 import { installOpenCode, updateOpenCode } from '../../tools/opencode/install.mjs';
 
@@ -19,7 +19,12 @@ export async function installTool(tool) {
 }
 
 async function doInstall(tool) {
-  console.log(``);
+  if (tool !== 'claude' && tool !== 'opencode') {
+    console.log(`\n  ${c.yellow('Usage:')} occier tool install <claude|opencode>\n`);
+    return;
+  }
+
+  console.log('');
   divider();
   console.log(`  ${c.boldWhite(`Install ${tool === 'claude' ? 'Claude Code' : 'OpenCode'}`)}`);
   console.log(``);
@@ -52,6 +57,11 @@ export async function updateTool(tool) {
 }
 
 async function doUpdate(tool) {
+  if (tool !== 'claude' && tool !== 'opencode') {
+    console.log(`\n  ${c.yellow('Usage:')} occier tool update <claude|opencode>\n`);
+    return;
+  }
+
   console.log(``);
   divider();
   console.log(`  ${c.boldWhite(`Update ${tool === 'claude' ? 'Claude Code' : 'OpenCode'}`)}`);

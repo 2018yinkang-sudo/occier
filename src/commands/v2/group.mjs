@@ -1,5 +1,5 @@
 import { select } from '@inquirer/prompts';
-import { c, ok, warn, info, divider } from '../tui.mjs';
+import { c, ok, warn, info, divider } from '../../tui.mjs';
 import { allGroups, getGroup } from '../../model-groups/registry.mjs';
 import { allProviders, getProvider } from '../../registry/providers.mjs';
 import { createStore } from '../../store/credential-store.mjs';
@@ -28,7 +28,7 @@ export async function groupUse() {
   const store = createStore();
   const entries = await store.list();
   const providers = allProviders().filter((p) =>
-    p.envVarName && entries.some((e) => e.key === p.envVarName.toLowerCase()),
+    p.envVarName && entries.some((e) => e.key.toLowerCase() === p.envVarName.toLowerCase()),
   );
   const groups = allGroups().filter((g) =>
     providers.some((p) => p.id === g.provider) || g.id === 'custom',
@@ -62,7 +62,7 @@ export async function modelList() {
   console.log(``);
 
   for (const p of providers) {
-    if (p.models.length === 0) continue;
+    if (!p.models || p.models.length === 0) continue;
     console.log(`  ${c.cyan('●')} ${p.label} (${p.protocol})`);
     for (const m of p.models) {
       console.log(`    ${m.id.padEnd(35)} ${c.gray(`${m.context.toLocaleString()} ctx`)}`);
@@ -79,7 +79,7 @@ export async function modelProbe() {
   const entries = await store.list();
 
   const providers = allProviders().filter((p) =>
-    p.healthUrl && entries.some((e) => e.key === p.envVarName.toLowerCase()),
+    p.healthUrl && entries.some((e) => e.key.toLowerCase() === p.envVarName.toLowerCase()),
   );
 
   if (providers.length === 0) {

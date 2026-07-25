@@ -14,11 +14,18 @@ export async function unsetPipProxy() {
 export async function configureAptProxy(protocol, host, port) {
   const url = `http://${host}:${port}`;
   const { writeFile } = await import("fs/promises");
-  await writeFile("/etc/apt/apt.conf.d/95proxy", [
-    `Acquire::http::Proxy "${url}";`,
-    `Acquire::https::Proxy "${url}";`,
-    "",
-  ].join("\n"));
+  try {
+    await writeFile("/etc/apt/apt.conf.d/95proxy", [
+      `Acquire::http::Proxy "${url}";`,
+      `Acquire::https::Proxy "${url}";`,
+      "",
+    ].join("\n"));
+  } catch (err) {
+    if (err.code === "EACCES") {
+      process.stderr.write("  \x1b[33m⚠\x1b[0m  APT proxy requires root. Run with sudo.\n");
+    }
+    throw err;
+  }
 }
 
 export async function unsetAptProxy() {
@@ -29,16 +36,23 @@ export async function unsetAptProxy() {
 export async function configureProxychains(protocol, host, port) {
   const { writeFile } = await import("fs/promises");
   const proto = protocol === "socks5" ? "socks5" : "http";
-  await writeFile("/etc/proxychains4.conf", [
-    "strict_chain",
-    "proxy_dns",
-    "tcp_read_time_out 15000",
-    "tcp_connect_time_out 8000",
-    "",
-    "[ProxyList]",
-    `${proto}  ${host} ${port}`,
-    "",
-  ].join("\n"));
+  try {
+    await writeFile("/etc/proxychains4.conf", [
+      "strict_chain",
+      "proxy_dns",
+      "tcp_read_time_out 15000",
+      "tcp_connect_time_out 8000",
+      "",
+      "[ProxyList]",
+      `${proto}  ${host} ${port}`,
+      "",
+    ].join("\n"));
+  } catch (err) {
+    if (err.code === "EACCES") {
+      process.stderr.write("  \x1b[33m⚠\x1b[0m  Proxychains requires root. Run with sudo.\n");
+    }
+    throw err;
+  }
 }
 
 export async function configureAllProxies(protocol, host, port) {
