@@ -66,7 +66,7 @@ export async function providerConnect() {
       provider: providerId,
       updatedAt: new Date().toISOString(),
     });
-    ok(`API key saved for ${provider.label} (${maskValue(key)})`);
+    ok(`API key saved for ${provider.label} (${maskValue(key, "api_key")})`);
 
     if (provider.healthUrl) {
       console.log(`  ${c.gray('Testing connectivity...')}`);

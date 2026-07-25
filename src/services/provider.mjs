@@ -49,7 +49,7 @@ export async function connectProvider(providerId, apiKey) {
       id: providerId,
       label: provider.label,
       configured: !!apiKey,
-      fingerprint: apiKey ? maskValue(apiKey) : null,
+      fingerprint: apiKey ? maskValue(apiKey, "api_key") : null,
     },
   };
 }

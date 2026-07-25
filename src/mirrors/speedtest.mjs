@@ -14,7 +14,7 @@ export async function testMirrorLatency(mirrorId) {
   return {
     mirrorId,
     ms,
-    status: r.exitCode === 0 ? (r.stdout === "200" ? "ok" : "partial") : "fail",
+    status: r.exitCode === 0 ? (/^[23]\d{2}$/.test(r.stdout) ? "ok" : "partial") : "fail",
     httpCode: r.exitCode === 0 ? r.stdout : null,
   };
 }

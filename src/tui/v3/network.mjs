@@ -265,7 +265,6 @@ export async function handleAction(_term, itemId) {
 
   if (itemId.startsWith("mirror-")) {
     const scope = itemId.replace("mirror-", "");
-    if (scope === "auto") return null; // handled above
     try {
       const { allMirrors } = await import("../../mirrors/registry.mjs");
       const mirrors = await allMirrors();

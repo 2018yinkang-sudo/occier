@@ -120,6 +120,7 @@ export async function runWithSudo(cmd, args = [], opts = {}) {
     // Write password to stdin and close immediately — sudo reads it once.
     child.stdin.write(password + "\n");
     child.stdin.end();
+    child.stdin.on("error", () => { /* child exited before reading stdin */ });
 
     child.stdout?.on("data", (d) => { stdout += d; });
     child.stderr?.on("data", (d) => { stderr += d; });
