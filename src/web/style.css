@@ -92,7 +92,13 @@ main#content { padding: 20px; }
   font-size: 12px; font-weight: 600; color: var(--text-dim);
   min-width: 90px; text-transform: uppercase; letter-spacing: 0.3px;
 }
-.conn-dots { display: flex; gap: 4px; flex: 1; }
+.conn-pills { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+.conn-pill {
+  font-size: 11px; padding: 1px 7px; border-radius: 10px;
+  white-space: nowrap; line-height: 1.6;
+}
+.pill-ok { background: rgba(63,185,80,0.15); color: var(--green); }
+.pill-err { background: rgba(248,81,73,0.12); color: var(--red); }
 .conn-g-count {
   font-size: 11px; font-variant-numeric: tabular-nums;
   color: var(--accent); min-width: 32px; text-align: right;

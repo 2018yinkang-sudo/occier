@@ -343,9 +343,11 @@ function buildConnectivityCompact(conn) {
   const rows = groupOrder.map((g) => {
     const items = groups[g];
     const okCount = items.filter((r) => r.status === "ok").length;
-    const dots = items.map((r) => '<span class="dot ' + (r.status === "ok" ? "dot-on" : "dot-err") + '" title="' + r.name + '"></span>').join("");
+    const pills = items.map((r) =>
+      '<span class="conn-pill ' + (r.status === "ok" ? "pill-ok" : "pill-err") + '">' + r.name + '</span>'
+    ).join("");
     return '<div class="conn-compact-row"><span class="conn-g-label">' + g + '</span>' +
-      '<span class="conn-dots">' + dots + '</span>' +
+      '<span class="conn-pills">' + pills + '</span>' +
       '<span class="conn-g-count">' + okCount + '/' + items.length + '</span></div>';
   }).join("");
 
@@ -556,9 +558,11 @@ function buildConnectivityRows(conn) {
   return groupOrder.map((g) => {
     const items = groups[g];
     const okCount = items.filter((r) => r.status === "ok").length;
-    const dots = items.map((r) => '<span class="dot ' + (r.status === "ok" ? "dot-on" : "dot-err") + '" title="' + r.name + '"></span>').join("");
+    const pills = items.map((r) =>
+      '<span class="conn-pill ' + (r.status === "ok" ? "pill-ok" : "pill-err") + '">' + r.name + '</span>'
+    ).join("");
     return '<div class="conn-compact-row"><span class="conn-g-label">' + g + '</span>' +
-      '<span class="conn-dots">' + dots + '</span>' +
+      '<span class="conn-pills">' + pills + '</span>' +
       '<span class="conn-g-count">' + okCount + '/' + items.length + '</span></div>';
   }).join("");
 }
