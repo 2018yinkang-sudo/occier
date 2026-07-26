@@ -317,12 +317,9 @@ function buildNetworkContent(el, data) {
     '<div class="card"><div class="card-head">Platform</div><div class="card-body">' +
     '<span class="muted">' + platform.os + (platform.isWSL ? " WSL" + platform.wslVersion + " (" + (platform.wslMode || "nat") + ")" : "") + '</span></div></div>',
 
-    buildMirrorsCard(mirrors),
+    buildMirrorsCompact(mirrors),
 
-    '<div class="card" style="grid-column:1/-1"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card">' +
-    '<button class="btn btn-sm" id="btn-conn-test" style="margin-bottom:10px">Test All</button>' +
-    buildConnectivityTable(connectivity) +
-    '</div></div>',
+    buildConnectivityCompact(connectivity),
 
     '</div>',
   ].join("");
@@ -330,9 +327,9 @@ function buildNetworkContent(el, data) {
   attachNetworkEvents(el);
 }
 
-function buildConnectivityTable(conn) {
+function buildConnectivityCompact(conn) {
   if (!conn || conn.length === 0) {
-    return '<p class="muted">No data — press r to refresh</p>';
+    return '<div class="card"><div class="card-head">Connectivity</div><div class="card-body"><p class="muted">No data \u2014 press r to refresh</p></div></div>';
   }
 
   const groups = {};
@@ -343,30 +340,47 @@ function buildConnectivityTable(conn) {
     groups[g].push(r);
   }
 
-  return groupOrder.map((g) => {
+  const rows = groupOrder.map((g) => {
     const items = groups[g];
     const okCount = items.filter((r) => r.status === "ok").length;
-    return '<div class="conn-group">' +
-      '<div class="conn-group-head"><span>' + g + '</span><span class="conn-group-count">' + okCount + '/' + items.length + '</span></div>' +
-      items.map((r) => {
-        const dotCls = r.status === "ok" ? "dot-on" : "dot-err";
-        const lat = r.status === "ok" ? r.http.ms + "ms" : r.label || "timeout";
-        return '<div class="conn-row"><span class="dot ' + dotCls + '"></span>' +
-          '<span class="conn-name">' + r.name + '</span><span class="conn-lat">' + lat + '</span></div>';
-      }).join("") + '</div>';
+    const dots = items.map((r) => '<span class="dot ' + (r.status === "ok" ? "dot-on" : "dot-err") + '" title="' + r.name + '"></span>').join("");
+    return '<div class="conn-compact-row"><span class="conn-g-label">' + g + '</span>' +
+      '<span class="conn-dots">' + dots + '</span>' +
+      '<span class="conn-g-count">' + okCount + '/' + items.length + '</span></div>';
   }).join("");
+
+  return '<div class="card"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card">' +
+    '<div class="conn-compact">' + rows + '</div>' +
+    '<div class="btn-group" style="margin-top:10px">' +
+    button("btn-conn-test", "Test All", "btn-sm") +
+    '</div></div></div>';
 }
 
 const SCOPES = ["npm", "pip", "apt", "node"];
 
-function buildMirrorsCard(mirrors) {
-  return '<div class="card" style="grid-column:1/-1"><div class="card-head">Mirrors</div><div class="card-body" id="mirrors-card">' +
-    '<div class="btn-group" style="margin-bottom:12px">' +
-    button("btn-test-mirrors", "Test All Latencies", "btn-sm") +
-    button("btn-auto-mirrors", "Auto-switch Fastest", "btn-sm btn-pri") +
-    '</div>' +
-    buildMirrorTable(mirrors) +
-    '</div></div>';
+function buildMirrorsCompact(mirrors) {
+  const scopeRows = SCOPES.map((scope) => {
+    const scopeMirrors = (mirrors || []).filter((m) => m.scope === scope);
+    if (scopeMirrors.length === 0) return "";
+    const active = scopeMirrors.find((m) => m.enabled);
+    const activeName = active ? active.id.replace(scope + "-", "") : "\u2014";
+    const activeRegion = active ? (active.region || "") : "";
+    return '<div class="mirror-compact-row">' +
+      '<span class="mc-scope">' + scope + (scope === "apt" ? '*' : '') + '</span>' +
+      '<span class="dot ' + (active ? "dot-on" : "dot-off") + '"></span>' +
+      '<span class="mc-name">' + activeName + '</span>' +
+      '<span class="mc-region">' + activeRegion + '</span>' +
+      '<span class="mc-count">' + scopeMirrors.length + ' mirrors</span>' +
+      '<button class="btn btn-sm mc-swap" data-scope="' + scope + '">switch</button>' +
+      '</div>';
+  }).join("");
+
+  return '<div class="card"><div class="card-head">Mirrors <span class="count">' + (mirrors || []).filter((m) => m.enabled).length + '/' + (mirrors || []).length + ' active</span></div><div class="card-body" id="mirrors-card">' +
+    '<div class="mirror-compact">' + scopeRows + '</div>' +
+    '<div class="btn-group" style="margin-top:10px">' +
+    button("btn-test-mirrors", "Test Latencies", "btn-sm") +
+    button("btn-auto-mirrors", "Auto Fastest", "btn-sm btn-pri") +
+    '</div></div></div>';
 }
 
 function buildMirrorTable(mirrors, latencies) {
@@ -423,8 +437,14 @@ function attachNetworkEvents(el) {
     });
   });
 
-  el.querySelectorAll(".mir-switch-btn").forEach((btn) => {
-    btn.addEventListener("click", () => switchToMirror(btn.dataset.scope, btn.dataset.id));
+  el.querySelectorAll(".mir-switch-btn, .mc-swap").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("mc-swap")) {
+        showMirrorPicker(btn.dataset.scope, btn);
+      } else {
+        switchToMirror(btn.dataset.scope, btn.dataset.id);
+      }
+    });
   });
 }
 
@@ -469,13 +489,78 @@ function rebindMirrorButtons() {
   document.querySelectorAll(".mir-switch-btn").forEach((btn) => {
     btn.addEventListener("click", () => switchToMirror(btn.dataset.scope, btn.dataset.id));
   });
+  document.querySelectorAll(".mc-swap").forEach((btn) => {
+    btn.addEventListener("click", () => showMirrorPicker(btn.dataset.scope, btn));
+  });
+}
+
+async function showMirrorPicker(scope, triggerBtn) {
+  try {
+    const data = await api("/network");
+    const scopeMirrors = (data.mirrors || []).filter((m) => m.scope === scope);
+    if (scopeMirrors.length === 0) return;
+
+    const items = scopeMirrors.map((m) =>
+      '<button class="pick-mirror-btn" data-scope="' + scope + '" data-id="' + m.id + '">' +
+      '<span class="dot ' + (m.enabled ? "dot-on" : "dot-off") + '"></span> ' +
+      m.id.replace(scope + "-", "") +
+      (m.region ? ' <span class="muted">' + m.region + '</span>' : "") +
+      '</button>'
+    ).join("");
+
+    const existing = document.getElementById("mirror-picker");
+    if (existing) { existing.remove(); return; }
+
+    const picker = document.createElement("div");
+    picker.id = "mirror-picker";
+    picker.className = "mirror-picker";
+    picker.innerHTML = '<div class="mirror-picker-inner"><div class="picker-head">' + scope + ' mirrors</div>' + items + '</div>';
+    document.body.appendChild(picker);
+
+    const rect = triggerBtn.getBoundingClientRect();
+    picker.style.top = (rect.bottom + 4) + "px";
+    picker.style.left = Math.min(rect.left, window.innerWidth - 220) + "px";
+
+    picker.querySelectorAll(".pick-mirror-btn").forEach((b) => {
+      b.addEventListener("click", async () => {
+        picker.remove();
+        await switchToMirror(b.dataset.scope, b.dataset.id);
+      });
+    });
+
+    const close = (e) => {
+      if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener("mousedown", close); }
+    };
+    setTimeout(() => document.addEventListener("mousedown", close), 0);
+  } catch { /* picker non-critical */ }
 }
 
 function updateConnectivityCard(conn) {
   const card = document.getElementById("conn-card");
   if (!card) return;
-  card.innerHTML = '<button class="btn btn-sm" id="btn-conn-test" style="margin-bottom:10px">Test All</button>' + buildConnectivityTable(conn);
+  card.innerHTML = '<div class="conn-compact">' + buildConnectivityRows(conn) + '</div>' +
+    '<div class="btn-group" style="margin-top:10px">' +
+    button("btn-conn-test", "Test All", "btn-sm") + '</div>';
   card.querySelector("#btn-conn-test")?.addEventListener("click", testConnectivityNow);
+}
+
+function buildConnectivityRows(conn) {
+  if (!conn || conn.length === 0) return '<p class="muted">No data</p>';
+  const groups = {};
+  const groupOrder = [];
+  for (const r of conn) {
+    const g = r.group || "Other";
+    if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
+    groups[g].push(r);
+  }
+  return groupOrder.map((g) => {
+    const items = groups[g];
+    const okCount = items.filter((r) => r.status === "ok").length;
+    const dots = items.map((r) => '<span class="dot ' + (r.status === "ok" ? "dot-on" : "dot-err") + '" title="' + r.name + '"></span>').join("");
+    return '<div class="conn-compact-row"><span class="conn-g-label">' + g + '</span>' +
+      '<span class="conn-dots">' + dots + '</span>' +
+      '<span class="conn-g-count">' + okCount + '/' + items.length + '</span></div>';
+  }).join("");
 }
 
 // ── Network actions ──
