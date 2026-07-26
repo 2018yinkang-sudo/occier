@@ -256,21 +256,24 @@ async function _runRender() {
   _rendering = false;
 }
 
-async function _doRender() {
+async function _doRender(options = {}) {
+  const { soft = false } = options;
   const tabId = currentTabId();
   const scrollOffset = getScrollOffset(_state, tabId);
   const cached = isPanelCached(tabId);
   const cursorWasUnset = _state.cursor[tabId] === undefined;
 
-  term.clear();
-  drawHeader();
-  drawTabBar();
-  drawFooter();
-  drawStatusLine();
+  if (!soft) {
+    term.clear();
+    drawHeader();
+  if (!soft) drawTabBar();
+    drawFooter();
+    drawStatusLine();
+  }
 
   if (!cached) {
     const mod = _loadedPanels[MOD_MAP[tabId]];
-    const hasSkeleton = mod && typeof mod.renderSkeleton === "function"
+    const hasSkeleton = !soft && mod && typeof mod.renderSkeleton === "function"
       && (typeof mod.hasData !== "function" || !mod.hasData());
     let animTimer = null;
 
@@ -309,7 +312,7 @@ async function _doRender() {
     } else {
       drawStatusLine();
     }
-    drawFooter();
+    if (!soft) drawFooter();
     try { term.eraseDisplayAfter(); } catch { /* non-TTY: skip */ }
 
     if (cursorJustInitialized) {
@@ -785,7 +788,7 @@ async function invokeAction(itemId) {
     showStatus(`Error: ${err.message}`, "error", { skipRender: true });
   } finally {
     _state.actionInFlight = false;
-    renderScreen();
+    await _doRender({ soft: true });
   }
 }
 
