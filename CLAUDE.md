@@ -703,24 +703,56 @@ Before committing, always run `npm run lint` and fix all errors. Do not suppress
 
 ### GitHub Actions Workflows
 
-**`.github/workflows/ci.yml`** — triggered on push/PR to `main`:
+**`.github/workflows/ci.yml`** — triggered on push/PR to `main`, `v2`, `v3`:
 - Matrix test across Node.js 20, 22
 - Runs `npm ci → lint → test`
 
 **`.github/workflows/publish.yml`** — triggered on tag push matching `v*`:
 - Runs lint + test
 - Publishes to npm registry using `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`
+- Only fires for tags on `main` (v2/v3 have their own publish workflows)
+
+**`.github/workflows/publish-v2.yml`** — triggered on push to `v2`:
+- Auto-bumps patch version, publishes to npm as `latest`
+- Bot commit includes `[publish skip]` to prevent recursive triggers
+
+**`.github/workflows/publish-v3.yml`** — triggered on push to `v3`:
+- Auto-bumps patch version, publishes to npm as `next` (dist-tag)
+- Bot commit includes `[publish skip]` to prevent recursive triggers
+- Users install v3 via: `npm install occier@next`
 
 ### Release Flow
 
 ```
-1. Develop on branch → open PR to main
-2. CI runs automatically (lint + test on 3 Node versions)
-3. Merge to main
-4. npm version patch    # or minor / major
-5. git push --follow-tags
-6. Publish workflow triggers automatically → npm publish
+Branch      CI              Publish              npm tag
+────────    ───────────────  ──────────────────   ────────
+main        push/PR → CI    tag v* → publish     latest
+v2          push → CI       push → auto-publish  latest
+v3          push → CI       push → auto-publish  next
 ```
+
+### Versioning
+
+Use `npm version <patch|minor|major>` to bump the version. This automatically:
+- Updates `version` in `package.json`
+- Creates a git commit with the version message
+- Creates an annotated git tag (e.g., `v1.2.0`)
+
+Do not manually edit the version field in `package.json`.
+
+### NPM Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `npm test` | Run vitest once |
+| `npm run lint` | ESLint check |
+| `npm run ci` | lint + test (full pre-push check) |
+
+The `prepublishOnly` hook runs `npm run ci` automatically before every `npm publish`, preventing broken releases.
+
+### NPM Token
+
+The repository requires a GitHub Secret named `NPM_TOKEN` containing an npm Automation Token (no 2FA, for CI usage). Generate one at `https://www.npmjs.com/settings/<user>/tokens`, type: Automation.
 
 ### Versioning
 

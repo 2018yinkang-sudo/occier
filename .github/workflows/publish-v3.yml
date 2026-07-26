@@ -1,0 +1,38 @@
+name: Publish V3
+
+# Auto-bump patch version & publish as @next on every push to v3.
+# The bot commit includes "[publish skip]" to prevent recursive re-trigger.
+on:
+  push:
+    branches: [v3]
+
+jobs:
+  publish:
+    if: "!contains(github.event.head_commit.message, '[publish skip]')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+      - run: npm run ci
+
+      - name: Bump & publish
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          NEW_TAG=$(npm version patch -m "chore: bump to %s [publish skip]")
+          git push origin v3
+          git push origin "$NEW_TAG"
+          npm publish --tag next
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
