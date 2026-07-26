@@ -31,6 +31,7 @@ export async function testConnectivity() {
     results: results.map((r) => ({
       name: r.name,
       url: r.url,
+      group: r.group || null,
       dns: { pass: r.dns.pass, ms: r.dns.ms },
       http: { pass: r.http.pass, code: r.http.code, ms: r.http.ms, error: r.http.error || null },
       status: r.status,

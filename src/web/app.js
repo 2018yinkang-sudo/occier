@@ -243,7 +243,7 @@ function buildDashboardSkeleton() {
 }
 
 function buildNetworkSkeleton() {
-  return '<div class="grid"><div class="skeleton-card"><div class="skel-h"></div><div class="skel-r"></div><div class="skel-r w80"></div></div><div class="skeleton-card"><div class="skel-h"></div><div class="skel-r w60"></div><div class="skel-r"></div></div><div class="skeleton-card" style="grid-column:1/-1"><div class="skel-h"></div><div class="skel-r w80"></div></div></div>';
+  return '<div class="net-grid"><div class="skeleton-card"><div class="skel-h"></div><div class="skel-r"></div><div class="skel-r w80"></div></div><div class="skeleton-card"><div class="skel-h"></div><div class="skel-r w60"></div></div><div class="skeleton-card" style="grid-column:1/-1"><div class="skel-h"></div><div class="skel-r w80"></div></div><div class="skeleton-card" style="grid-column:1/-1"><div class="skel-h"></div><div class="skel-r w80"></div><div class="skel-r w60"></div></div></div>';
 }
 
 // ── Dashboard ──
@@ -319,7 +319,7 @@ function buildNetworkContent(el, data) {
 
     buildMirrorsCard(mirrors),
 
-    '<div class="card"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card">' +
+    '<div class="card" style="grid-column:1/-1"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card">' +
     '<button class="btn btn-sm" id="btn-conn-test" style="margin-bottom:10px">Test All</button>' +
     buildConnectivityTable(connectivity) +
     '</div></div>',
