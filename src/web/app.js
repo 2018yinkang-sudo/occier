@@ -306,7 +306,7 @@ function buildNetworkContent(el, data) {
     hasProxy ? '<span id="proxy-remove-group">' + button("btn-rm-proxy", "Remove", "btn-dng", "confirmRemoveProxy()") + '<span class="inline-confirm" id="cf-rm-proxy">Confirm: <button class="btn btn-sm btn-pri" data-confirm="yes">Yes</button> <button class="btn btn-sm" data-confirm="no">No</button></span></span>' : "",
     '</div></div></div>',
 
-    buildMirrorsCard(el, mirrors),
+    buildMirrorsCard(mirrors),
 
     connectivity && connectivity.length > 0
       ? '<div class="card" style="grid-column:1/-1"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card"><table>' +
@@ -324,8 +324,8 @@ function buildNetworkContent(el, data) {
 
 const SCOPES = ["npm", "pip", "apt", "node"];
 
-function buildMirrorsCard(el, mirrors) {
-  el.innerHTML += '<div class="card" style="grid-column:1/-1"><div class="card-head">Mirrors</div><div class="card-body" id="mirrors-card">' +
+function buildMirrorsCard(mirrors) {
+  return '<div class="card" style="grid-column:1/-1"><div class="card-head">Mirrors</div><div class="card-body" id="mirrors-card">' +
     '<div class="btn-group" style="margin-bottom:12px">' +
     button("btn-test-mirrors", "Test All Latencies", "btn-sm") +
     button("btn-auto-mirrors", "Auto-switch Fastest", "btn-sm btn-pri") +
