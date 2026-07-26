@@ -266,9 +266,21 @@ async function _doRender(options = {}) {
   if (!soft) {
     term.clear();
     drawHeader();
-  if (!soft) drawTabBar();
+    drawTabBar();
     drawFooter();
     drawStatusLine();
+  }
+
+  if (soft) {
+    const w = Number.isFinite(term.width) ? term.width : 80;
+    const h = Number.isFinite(term.height) ? term.height : 24;
+    for (let r = CONTENT_START; r < h - 1; r++) {
+      term.moveTo(1, r);
+      term.styleReset();
+      term.bgBlack();
+      term(" ".repeat(w));
+    }
+    term.styleReset();
   }
 
   if (!cached) {
@@ -336,7 +348,7 @@ async function _doRender(options = {}) {
     }
   }
 
-  drawTabBar();
+  if (!soft) drawTabBar();
 }
 
 function drawSearchBar() {
