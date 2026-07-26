@@ -292,34 +292,69 @@ async function loadNetwork(el) {
 function buildNetworkContent(el, data) {
   const { platform, proxy, mirrors, connectivity } = data;
   const hasProxy = !!(proxy && proxy.http_proxy);
+  let proto = "", host = "", port = "";
+  if (hasProxy) {
+    try { const u = new URL(proxy.http_proxy); proto = u.protocol.replace(":","").replace("socks5h","socks5"); host = u.hostname; port = u.port || ""; } catch { /* URL parse non-critical */ }
+  }
 
   el.innerHTML = [
-    '<div class="grid">',
+    '<div class="net-grid">',
 
     '<div class="card"><div class="card-head">Proxy</div><div class="card-body" id="proxy-card">',
     hasProxy
-      ? '<p style="margin-bottom:6px"><span class="dot dot-on"></span><code>' + proxy.http_proxy + '</code></p><span class="status-ok hidden" id="proxy-result"></span>'
-      : '<p class="muted" style="margin-bottom:6px"><span class="dot dot-off"></span>No proxy configured</p>',
+      ? '<p class="proxy-url"><span class="dot dot-on"></span><code>' + proxy.http_proxy + '</code></p>' +
+        '<div class="proxy-detail"><span class="pd-item">' + proto + '</span><span class="pd-sep">\u00b7</span>' +
+        '<span class="pd-item">' + host + '</span><span class="pd-sep">\u00b7</span>' +
+        '<span class="pd-item">port ' + (port || "-") + '</span></div>' +
+        '<span class="status-ok hidden" id="proxy-result"></span>'
+      : '<p class="muted proxy-url"><span class="dot dot-off"></span>No proxy configured</p>',
     '<div class="btn-group">',
-    hasProxy ? button("btn-test-proxy", "Test", "", "testProxy()") : button("btn-scan-proxy", "Scan", "", "scanProxy()"),
-    button("btn-conf-proxy", "Configure", "", "showProxyModal()"),
-    hasProxy ? '<span id="proxy-remove-group">' + button("btn-rm-proxy", "Remove", "btn-dng", "confirmRemoveProxy()") + '<span class="inline-confirm" id="cf-rm-proxy">Confirm: <button class="btn btn-sm btn-pri" data-confirm="yes">Yes</button> <button class="btn btn-sm" data-confirm="no">No</button></span></span>' : "",
+    hasProxy ? button("btn-test-proxy", "Test", "") : button("btn-scan-proxy", "Scan", ""),
+    button("btn-conf-proxy", "Configure", ""),
+    hasProxy ? '<span id="proxy-remove-group">' + button("btn-rm-proxy", "Remove", "btn-dng") + '<span class="inline-confirm" id="cf-rm-proxy">Confirm: <button class="btn btn-sm btn-pri" data-confirm="yes">Yes</button> <button class="btn btn-sm" data-confirm="no">No</button></span></span>' : "",
     '</div></div></div>',
+
+    '<div class="card"><div class="card-head">Platform</div><div class="card-body">' +
+    '<span class="muted">' + platform.os + (platform.isWSL ? " WSL" + platform.wslVersion + " (" + (platform.wslMode || "nat") + ")" : "") + '</span></div></div>',
 
     buildMirrorsCard(mirrors),
 
-    connectivity && connectivity.length > 0
-      ? '<div class="card" style="grid-column:1/-1"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card"><table>' +
-        connectivity.map((r) => '<tr><td>' + r.name + '</td><td>' + dot(r.status === "ok") + ' ' + r.status + '</td><td>' + (r.status === "ok" ? r.http.ms + "ms" : "-") + '</td></tr>').join("") + '</table></div></div>'
-      : '<div class="card" style="grid-column:1/-1"><div class="card-head">Connectivity</div><div class="card-body empty" id="conn-card"><span class="muted">No data — press r to refresh</span></div></div>',
-
-    '<div class="card" style="grid-column:1/-1"><div class="card-head">Platform</div><div class="card-body">' +
-    '<span class="muted">' + platform.os + (platform.isWSL ? " WSL" + platform.wslVersion + " (" + (platform.wslMode || "nat") + ")" : "") + '</span></div></div>',
+    '<div class="card"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card">' +
+    '<button class="btn btn-sm" id="btn-conn-test" style="margin-bottom:10px">Test All</button>' +
+    buildConnectivityTable(connectivity) +
+    '</div></div>',
 
     '</div>',
   ].join("");
 
   attachNetworkEvents(el);
+}
+
+function buildConnectivityTable(conn) {
+  if (!conn || conn.length === 0) {
+    return '<p class="muted">No data — press r to refresh</p>';
+  }
+
+  const groups = {};
+  const groupOrder = [];
+  for (const r of conn) {
+    const g = r.group || "Other";
+    if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
+    groups[g].push(r);
+  }
+
+  return groupOrder.map((g) => {
+    const items = groups[g];
+    const okCount = items.filter((r) => r.status === "ok").length;
+    return '<div class="conn-group">' +
+      '<div class="conn-group-head"><span>' + g + '</span><span class="conn-group-count">' + okCount + '/' + items.length + '</span></div>' +
+      items.map((r) => {
+        const dotCls = r.status === "ok" ? "dot-on" : "dot-err";
+        const lat = r.status === "ok" ? r.http.ms + "ms" : r.label || "timeout";
+        return '<div class="conn-row"><span class="dot ' + dotCls + '"></span>' +
+          '<span class="conn-name">' + r.name + '</span><span class="conn-lat">' + lat + '</span></div>';
+      }).join("") + '</div>';
+  }).join("");
 }
 
 const SCOPES = ["npm", "pip", "apt", "node"];
@@ -371,6 +406,7 @@ function attachNetworkEvents(el) {
     "btn-rm-proxy": () => confirmRemoveDelegate(el, "cf-rm-proxy", removeProxy),
     "btn-auto-mirrors": autoSwitchMirrors,
     "btn-test-mirrors": testMirrorLatencies,
+    "btn-conn-test": testConnectivityNow,
   };
 
   Object.entries(map).forEach(([id, fn]) => {
@@ -438,9 +474,8 @@ function rebindMirrorButtons() {
 function updateConnectivityCard(conn) {
   const card = document.getElementById("conn-card");
   if (!card) return;
-  if (conn && conn.length > 0) {
-    card.innerHTML = '<table>' + conn.map((r) => '<tr><td>' + r.name + '</td><td>' + dot(r.status === "ok") + ' ' + r.status + '</td><td>' + (r.status === "ok" ? r.http.ms + "ms" : "-") + '</td></tr>').join("") + '</table>';
-  }
+  card.innerHTML = '<button class="btn btn-sm" id="btn-conn-test" style="margin-bottom:10px">Test All</button>' + buildConnectivityTable(conn);
+  card.querySelector("#btn-conn-test")?.addEventListener("click", testConnectivityNow);
 }
 
 // ── Network actions ──
@@ -513,25 +548,40 @@ async function autoSwitchMirrors() {
   finally { setButtonLoading("btn-auto-mirrors", false); }
 }
 
+async function testConnectivityNow() {
+  setButtonLoading("btn-conn-test", true);
+  try {
+    const data = await api("/network");
+    updateConnectivityCard(data.connectivity);
+    toast("Connectivity test complete", "success");
+  } catch (err) { toast(err.message, "error"); }
+  finally { setButtonLoading("btn-conn-test", false); }
+}
+
 function showProxyModal() {
   const overlay = showModal("Configure Proxy",
-    '<div class="form-group"><label>Proxy URL</label><input id="proxy-url" placeholder="http://127.0.0.1:10808"></div>',
+    '<div class="form-group"><label>Protocol</label><select id="proxy-proto"><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></div>' +
+    '<div class="form-row"><div class="form-group" style="flex:3"><label>Host</label><input id="proxy-host" placeholder="127.0.0.1"></div>' +
+    '<div class="form-group" style="flex:1"><label>Port</label><input id="proxy-port" placeholder="10808"></div></div>' +
+    '<div class="form-row"><div class="form-group" style="flex:1"><label>Username <span class="muted">(optional)</span></label><input id="proxy-user" placeholder=""></div>' +
+    '<div class="form-group" style="flex:1"><label>Password <span class="muted">(optional)</span></label><input id="proxy-pass" type="password" placeholder=""></div></div>',
     '<button class="btn btn-pri" id="btn-apply-proxy">Apply</button><button class="btn" id="btn-cancel-proxy">Cancel</button>'
   );
   overlay.querySelector("#btn-apply-proxy").addEventListener("click", applyProxy);
   overlay.querySelector("#btn-cancel-proxy").addEventListener("click", () => overlay.remove());
-  overlay.querySelector("#proxy-url").focus();
 }
 
 async function applyProxy() {
-  const url = document.getElementById("proxy-url").value.trim();
-  if (!url) return;
+  const proto = document.getElementById("proxy-proto").value;
+  const host = document.getElementById("proxy-host").value.trim();
+  const port = document.getElementById("proxy-port").value.trim() || (proto === "socks5" ? "1080" : "3128");
+  const username = document.getElementById("proxy-user").value.trim();
+  const password = document.getElementById("proxy-pass").value;
+  if (!host) return;
   try {
-    const u = new URL(url);
-    const proto = u.protocol.replace(":", "");
     await api("/network/proxy", {
       method: "POST",
-      body: { protocol: proto, host: u.hostname, port: u.port || (proto === "socks5" ? "1080" : "3128") },
+      body: { protocol: proto, host, port, username, password },
     });
     toast("Proxy configured", "success");
     document.querySelector(".modal-overlay")?.remove();

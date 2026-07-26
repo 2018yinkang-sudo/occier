@@ -1,11 +1,21 @@
 import { runString } from "../exec/runner.mjs";
 
 const CHECK_TARGETS = [
-  { name: "GitHub", url: "https://github.com" },
-  { name: "npm Registry", url: "https://registry.npmjs.org" },
-  { name: "Google", url: "https://www.google.com" },
-  { name: "Baike (CN)", url: "https://www.baidu.com" },
-  { name: "npmjs.com", url: "https://www.npmjs.com" },
+  { name: "Google", url: "https://www.google.com", group: "General" },
+  { name: "Baidu", url: "https://www.baidu.com", group: "General" },
+  { name: "Cloudflare", url: "https://1.1.1.1", group: "General" },
+  { name: "OpenAI API", url: "https://api.openai.com", group: "AI Services" },
+  { name: "Anthropic API", url: "https://api.anthropic.com", group: "AI Services" },
+  { name: "HuggingFace", url: "https://huggingface.co", group: "AI Services" },
+  { name: "Google AI", url: "https://generativelanguage.googleapis.com", group: "AI Services" },
+  { name: "DeepSeek API", url: "https://api.deepseek.com", group: "AI Services" },
+  { name: "GitHub", url: "https://github.com", group: "Dev Platforms" },
+  { name: "GitLab", url: "https://gitlab.com", group: "Dev Platforms" },
+  { name: "Stack Overflow", url: "https://stackoverflow.com", group: "Dev Platforms" },
+  { name: "npm Registry", url: "https://registry.npmjs.org", group: "Package Registries" },
+  { name: "PyPI", url: "https://pypi.org", group: "Package Registries" },
+  { name: "Docker Hub", url: "https://hub.docker.com", group: "Package Registries" },
+  { name: "npmjs.com", url: "https://www.npmjs.com", group: "Package Registries" },
 ];
 
 export async function checkDns(hostname) {
