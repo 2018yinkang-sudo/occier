@@ -1,8 +1,8 @@
 import { select, password } from '@inquirer/prompts';
 import { c, ok, warn, info, divider } from '../../tui.mjs';
 import { allProviders, getProvider } from '../../registry/providers.mjs';
-import { createStore, maskValue } from '../../store/credential-store.mjs';
-import { run } from '../../exec/runner.mjs';
+import { createStore } from '../../store/credential-store.mjs';
+import { testProviderConnectivity, connectProvider } from '../../services/provider.mjs';
 
 export async function providerList() {
   const store = createStore();
@@ -30,8 +30,6 @@ export async function providerList() {
 }
 
 export async function providerConnect() {
-  const store = createStore();
-
   const providerId = await select({
     message: 'Select provider to configure:',
     choices: allProviders().map((p) => ({
@@ -60,21 +58,20 @@ export async function providerConnect() {
   });
 
   if (key) {
-    await store.set(provider.envVarName.toLowerCase(), {
-      type: 'api_key',
-      value: key,
-      provider: providerId,
-      updatedAt: new Date().toISOString(),
-    });
-    ok(`API key saved for ${provider.label} (${maskValue(key, "api_key")})`);
+    const result = await connectProvider(providerId, key);
+    if (!result.ok) {
+      warn(`Failed to save: ${result.error}`);
+    } else {
+      ok(`API key saved for ${provider.label} (${result.data.fingerprint})`);
 
-    if (provider.healthUrl) {
-      console.log(`  ${c.gray('Testing connectivity...')}`);
-      const r = await run('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', '--connect-timeout', '5', provider.healthUrl], { timeout: 8000 });
-      if (r.exitCode === 0) {
-        ok(`API reachable — HTTP ${r.stdout}`);
-      } else {
-        warn('Connectivity test inconclusive (may need proxy)');
+      if (provider.healthUrl || provider.baseURL) {
+        console.log(`  ${c.gray('Testing connectivity...')}`);
+        const r = await testProviderConnectivity(providerId);
+        const d = r.ok ? r.data : null;
+        if (d?.keyValid === true) ok(`Key valid — HTTP ${d.httpCode}`);
+        else if (d?.keyValid === false) warn(`Key INVALID — HTTP ${d.httpCode}`);
+        else if (d?.reachable === false) warn('Unreachable');
+        else warn('Connectivity test inconclusive');
       }
     }
   } else {
@@ -100,22 +97,24 @@ export async function providerTest() {
       console.log(`  ${c.gray('○')} ${p.label.padEnd(15)} ${c.yellow('not configured')}`);
       continue;
     }
-    process.stdout.write(`  ${c.gray('⏳')} ${p.label.padEnd(15)} testing...`);
-
-    if (!p.healthUrl) {
-      process.stdout.write(`\r  ${c.gray('─')} ${p.label.padEnd(15)} ${c.gray('N/A (uses login flow)')}\n`);
-      continue;
-    }
 
     const start = Date.now();
-    const r = await run('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', '--connect-timeout', '5', p.healthUrl], { timeout: 8000 });
-    const ms = Date.now() - start;
-
-    if (r.exitCode === 0) {
-      const code = parseInt(r.stdout);
-      process.stdout.write(`\r  ${c.green('✓')} ${p.label.padEnd(15)} HTTP ${code} (${ms}ms)\n`);
+    const result = await testProviderConnectivity(p.id);
+    if (!result.ok || !result.data) {
+      console.log(`  ${c.red('✗')} ${p.label.padEnd(15)} ${c.red(result.error || 'test failed')}`);
+      continue;
+    }
+    const r = result.data;
+    if (r.reachable === false) {
+      console.log(`  ${c.red('✗')} ${p.label.padEnd(15)} ${c.red('unreachable')}`);
+    } else if (r.keyValid === true) {
+      console.log(`  ${c.green('✓')} ${p.label.padEnd(15)} ${c.green('key valid')}  HTTP ${r.httpCode}  (${Date.now() - start}ms)`);
+    } else if (r.keyValid === false) {
+      console.log(`  ${c.red('✗')} ${p.label.padEnd(15)} ${c.red('key INVALID')}  HTTP ${r.httpCode}`);
+    } else if (r.reachable === null) {
+      console.log(`  ${c.gray('─')} ${p.label.padEnd(15)} ${c.gray(r.detail)}`);
     } else {
-      process.stdout.write(`\r  ${c.red('✗')} ${p.label.padEnd(15)} ${c.red('unreachable')}\n`);
+      console.log(`  ${c.yellow('⚠')} ${p.label.padEnd(15)} ${c.yellow(r.detail)}`);
     }
   }
 

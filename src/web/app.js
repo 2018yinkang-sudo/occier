@@ -504,7 +504,7 @@ function confirmRemoveCredential(key) {
 
 async function renderProviders(el) {
   const data = await api("/providers");
-  const rows = data.map((p) => "<tr><td>" + p.label + "</td><td>" + p.protocol + "</td><td>" + (p.configured ? badge("configured", "ok") : badge("not set", "warn")) + '</td><td><button class="btn" data-provider="' + p.id + '">Test</button></td></tr>').join("");
+  const rows = data.map((p) => "<tr><td>" + p.label + "</td><td>" + p.protocol + "</td><td>" + (p.configured ? badge("configured", "ok") : badge("not set", "warn")) + '</td><td>' + (p.configured ? '<button class="btn btn-sm" data-provider="' + p.id + '">Test</button>' : '') + '</td></tr>').join("");
   el.innerHTML = '<div class="card"><div class="card-title">Providers</div><table><tr><th>Provider</th><th>Protocol</th><th>Status</th><th></th></tr>' + rows + '</table></div>';
   el.querySelectorAll("[data-provider]").forEach((btn) => {
     btn.addEventListener("click", () => testProvider(btn.dataset.provider));
@@ -515,8 +515,16 @@ async function testProvider(id) {
   toast("Testing " + id + "...", "info");
   try {
     const data = await api("/providers/" + id + "/test", { method: "POST" });
-    if (data.ok && data.data?.reachable) toast(id + " is reachable", "success");
-    else toast(id + " unreachable", "error");
+    appendToTerminal(data.commands);
+    if (data.reachable === false) {
+      toast(id + ": unreachable (" + data.detail + ")", "error");
+    } else if (data.keyValid === true) {
+      toast(id + ": key valid!", "success");
+    } else if (data.keyValid === false) {
+      toast(id + ": key INVALID", "error");
+    } else {
+      toast(id + ": " + (data.detail || "tested"), "warn");
+    }
   } catch (err) { toast(err.message, "error"); }
 }
 

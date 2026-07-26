@@ -97,7 +97,7 @@ describe("services/vault — setCredential service wrapper", () => {
 
   it("rejects unknown type", async () => {
     const { setCredential } = await import("./vault.mjs");
-    const result = await setCredential("x", "api_key", { value: "v" });
+    const result = await setCredential("x", "no_such_type_xxxx", { value: "v" });
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/Unknown/);
   });

@@ -66,15 +66,23 @@ describe("credential-types — registry", () => {
     expect(t.keyMode).toBe("default");
   });
 
-  it("api_key and other are NOT in the registry", () => {
-    expect(getType("api_key")).toBeNull();
-    expect(getType("other")).toBeNull();
-    expect(CREDENTIAL_TYPES.every((t) => t.id !== "api_key" && t.id !== "other")).toBe(true);
+  it("api_key is hidden from the form but recognized by the type system", () => {
+    expect(getType("api_key")).toBeTruthy();
+    expect(getType("api_key").hidden).toBe(true);
+    expect(listTypes().some((t) => t.id === "api_key")).toBe(false);
+    expect(listTypesForApi().some((t) => t.id === "api_key")).toBe(false);
+    expect(isValidKeyName("deepseek_api_key")).toBe(true);
   });
 
-  it("listTypes and listTypesForApi return all 4 types", () => {
+  it("other is NOT in the registry at all", () => {
+    expect(getType("other")).toBeNull();
+  });
+
+  it("listTypes and listTypesForApi return 4 visible types", () => {
     expect(listTypes().length).toBe(4);
     expect(listTypesForApi().length).toBe(4);
+    // CREDENTIAL_TYPES includes hidden api_key = 5 total.
+    expect(CREDENTIAL_TYPES.length).toBe(5);
   });
 
   it("listTypesForApi exposes keyMode and fixedKey", () => {

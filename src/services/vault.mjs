@@ -195,49 +195,54 @@ function httpCmd(method, url, authHeader) {
   return `${method} ${url}${authHeader ? ` [${authHeader}]` : ""}`;
 }
 
-async function testModelKey(fields) {
-  const { endpoint_type, base_url, api_key } = fields;
-  const testUrl = deriveTestUrl(endpoint_type, base_url);
+// Check if an API key works with a given provider endpoint. Does an
+// authenticated GET to the derived models endpoint. Exported so both
+// testCredential (vault model keys) and testProviderConnectivity (builtin)
+// use the same logic. The API key is never printed or logged.
+export async function checkProviderConnectivity(protocol, baseURL, apiKey) {
+  const testUrl = deriveTestUrl(protocol, baseURL);
   if (!testUrl) {
-    return { reachable: false, keyValid: null, detail: `Unsupported endpoint type: ${endpoint_type}`, commands: [] };
+    return { reachable: false, keyValid: null, httpCode: null, detail: `Unsupported protocol: ${protocol}`, commands: [] };
   }
 
   let url, headers = {}, authLabel = "";
-  if (endpoint_type === "anthropic") { url = testUrl; headers["x-api-key"] = api_key; authLabel = "x-api-key: ***"; }
-  else if (endpoint_type === "openai") { url = testUrl; headers["Authorization"] = `Bearer ${api_key}`; authLabel = "Authorization: Bearer ***"; }
-  else if (endpoint_type === "gemini") { url = `${testUrl}?key=***`; }
+  if (protocol === "anthropic") { url = testUrl; headers["x-api-key"] = apiKey; authLabel = "x-api-key: ***"; }
+  else if (protocol === "openai") { url = testUrl; headers["Authorization"] = `Bearer ${apiKey}`; authLabel = "Authorization: Bearer ***"; }
+  else if (protocol === "gemini") { url = `${testUrl}?key=***`; }
 
   const start = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
-  let cmdResult;
   try {
     const res = await fetch(url, { headers, signal: controller.signal });
     let body = "";
     try { if (typeof res.text === "function") body = await res.text(); } catch { /* plain-object mock */ }
     const keyValid = res.status === 200 ? true : (res.status === 401 || res.status === 403 ? false : null);
-    cmdResult = {
-      cmd: httpCmd("GET", url, authLabel),
-      exitCode: res.status, stdout: body.slice(0, 500), stderr: "",
-      duration: Date.now() - start,
-    };
     return {
       reachable: true, keyValid, httpCode: res.status,
-      detail: keyValid === true ? "Key valid" : keyValid === false ? "Key invalid (unauthorized)" : "Reachable; key validation unavailable for this endpoint",
-      commands: [cmdResult],
+      detail: keyValid === true ? "Key valid" : keyValid === false ? "Key invalid (unauthorized)" : `Reachable; key validation unavailable (HTTP ${res.status})`,
+      commands: [{
+        cmd: httpCmd("GET", url, authLabel),
+        exitCode: res.status, stdout: body.slice(0, 500), stderr: "",
+        duration: Date.now() - start,
+      }],
     };
   } catch (err) {
-    cmdResult = {
-      cmd: httpCmd("GET", url, authLabel),
-      exitCode: -1, stdout: "", stderr: err.name === "AbortError" ? "Connection timed out" : err.message,
-      duration: Date.now() - start,
-    };
     return {
-      reachable: false, keyValid: null,
+      reachable: false, keyValid: null, httpCode: null,
       detail: err.name === "AbortError" ? "Connection timed out" : err.message,
-      commands: [cmdResult],
+      commands: [{
+        cmd: httpCmd("GET", url, authLabel),
+        exitCode: -1, stdout: "", stderr: err.name === "AbortError" ? "Connection timed out" : err.message,
+        duration: Date.now() - start,
+      }],
     };
   } finally { clearTimeout(timer); }
+}
+
+async function testModelKey(fields) {
+  const { endpoint_type, base_url, api_key } = fields;
+  return checkProviderConnectivity(endpoint_type, base_url, api_key);
 }
 
 async function testGitHubToken(token) {

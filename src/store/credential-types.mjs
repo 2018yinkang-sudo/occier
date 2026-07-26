@@ -115,6 +115,16 @@ export const CREDENTIAL_TYPES = [
         dependsOn: { field: "protocol", value: ["shadowsocks", "trojan"] } },
     ],
   },
+  {
+    id: "api_key",
+    label: "API Key",
+    description: "内置 provider 密钥（通过 occeier provider connect 创建）",
+    keyMode: "user",
+    fixedKey: null,
+    structured: false,
+    hidden: true,
+    fields: [{ name: "value", label: "值", type: FIELD.PASSWORD, required: true, secret: true }],
+  },
 ];
 
 // ── model-key presets ──
@@ -183,7 +193,7 @@ export function isStructuredType(typeId) {
 }
 
 export function listTypes() {
-  return CREDENTIAL_TYPES.map((t) => ({ ...t }));
+  return CREDENTIAL_TYPES.filter((t) => !t.hidden).map((t) => ({ ...t }));
 }
 
 export function fieldMatchesDepend(dependsOn, fields) {
@@ -194,7 +204,7 @@ export function fieldMatchesDepend(dependsOn, fields) {
 }
 
 export function listTypesForApi() {
-  return CREDENTIAL_TYPES.map((t) => ({
+  return CREDENTIAL_TYPES.filter((t) => !t.hidden).map((t) => ({
     id: t.id,
     label: t.label,
     description: t.description,
