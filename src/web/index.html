@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>occier</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>🔧</text></svg>">
 </head>
 <body>
   <header>
     <span class="logo">occier</span>
     <span class="version" id="version"></span>
     <span class="spacer"></span>
-    <span class="status-badge" id="global-status"></span>
+    <span class="status-dot" id="connection-dot" title="SSE connection"></span>
   </header>
 
   <nav id="tabs">
@@ -20,9 +21,15 @@
     <button data-tab="vault">Vault</button>
     <button data-tab="providers">Providers</button>
     <button data-tab="tools">Tools</button>
+    <button data-tab="cmd" class="tab-right">⌘ Help</button>
   </nav>
 
-  <main id="content"></main>
+  <main id="content">
+    <div class="loading-grid">
+      <div class="skeleton-card"><div class="skel-h"></div><div class="skel-r"></div><div class="skel-r w80"></div><div class="skel-r w60"></div></div>
+      <div class="skeleton-card"><div class="skel-h"></div><div class="skel-r"></div><div class="skel-r w80"></div></div>
+    </div>
+  </main>
 
   <div id="toast" class="toast hidden"></div>
 

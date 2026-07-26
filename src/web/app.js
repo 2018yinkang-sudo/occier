@@ -1,146 +1,446 @@
 
 const API = "/api";
 
-async function api(path, opts = {}) {
-  const res = await fetch(API + path, {
+// ── Helpers ──
+function api(path, opts = {}) {
+  return fetch(API + path, {
     method: opts.method || "GET",
     headers: opts.body ? { "Content-Type": "application/json" } : {},
     body: opts.body ? JSON.stringify(opts.body) : undefined,
+  }).then((r) => r.json()).then((d) => {
+    if (d.ok === false) throw new Error(d.error || "Request failed");
+    return d.data || d;
   });
-  const data = await res.json();
-  if (!res.ok || data.ok === false) {
-    throw new Error(data.error || "Request failed");
-  }
-  return data.data || data;
 }
 
 function toast(msg, kind = "info") {
   const el = document.getElementById("toast");
   el.textContent = msg;
-  el.className = "toast " + kind;
-  setTimeout(() => el.classList.add("hidden"), 3000);
+  el.className = "toast " + kind + " show";
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove("show"), 3000);
 }
 
-function dot(ok) {
-  return '<span class="dot ' + (ok ? "dot-green" : "dot-gray") + '"></span>';
+function dot(on) {
+  return '<span class="dot ' + (on ? "dot-on" : "dot-off") + '"></span>';
 }
 
 function badge(text, kind) {
   return '<span class="badge badge-' + kind + '">' + text + '</span>';
 }
 
-const tabs = document.querySelectorAll("#tabs button");
-tabs.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    tabs.forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    render(btn.dataset.tab);
-  });
-});
+function button(id, label, cls) {
+  return '<button class="btn ' + (cls || "") + '" id="' + id + '">' + label + '</button>';
+}
 
-async function render(tab) {
-  const content = document.getElementById("content");
-  content.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
-  try {
-    if (tab === "dashboard") await renderDashboard(content);
-    else if (tab === "network") await renderNetwork(content);
-    else if (tab === "vault") await renderVault(content);
-    else if (tab === "providers") await renderProviders(content);
-    else if (tab === "tools") await renderTools(content);
-  } catch (err) {
-    content.innerHTML = '<p class="badge badge-error">' + err.message + '</p>';
+
+
+function setButtonLoading(id, loading) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn._origText = btn._origText || btn.textContent;
+  btn.textContent = loading ? "..." : btn._origText;
+}
+
+// ── SSE ──
+let _sseReconnect = null;
+
+function connectSSE() {
+  const dot = document.getElementById("connection-dot");
+  const evtSource = new EventSource(API + "/events");
+
+  evtSource.addEventListener("connected", () => {
+    dot.classList.add("connected");
+    dot.title = "Connected";
+  });
+
+  evtSource.addEventListener("status", (e) => {
+    const data = JSON.parse(e.data);
+    updateDashboardSections(data);
+  });
+
+  evtSource.addEventListener("action", (e) => {
+    const data = JSON.parse(e.data);
+    handleSSEAction(data);
+  });
+
+  evtSource.addEventListener("error", () => {
+    dot.classList.remove("connected");
+    dot.title = "Disconnected";
+    evtSource.close();
+    clearTimeout(_sseReconnect);
+    _sseReconnect = setTimeout(connectSSE, 5000);
+  });
+}
+
+function handleSSEAction(data) {
+  if (!data.result || data.result.ok === false) return;
+
+  switch (data.tab) {
+    case "network":
+      refreshNetworkSection(data.path);
+      break;
+    case "vault":
+      if (document.getElementById("tabs")?.querySelector(".active")?.dataset.tab === "vault") {
+        render("vault");
+      }
+      break;
+    case "providers":
+      updateDashboardSectionsFromEvent();
+      break;
+    case "tools":
+      updateDashboardSectionsFromEvent();
+      break;
   }
 }
 
-async function renderDashboard(el) {
-  const data = await api("/status");
-  const { tools, providers, network, vault } = data;
-  const hasProxy = !!(network && network.proxy && network.proxy.http_proxy);
-  const configuredProviders = providers.filter((p) => p.configured);
+function refreshNetworkSection(path) {
+  const active = document.getElementById("tabs")?.querySelector(".active")?.dataset.tab;
+  if (active !== "network") return;
 
-  el.innerHTML = [
-    '<div class="card"><div class="card-title">System Status</div>',
-    '<div class="row"><span class="label">Claude Code</span>', dot(tools.claude.installed), '<span class="value">', tools.claude.installed ? "installed " + (tools.claude.version || "") : "not installed", '</span></div>',
-    '<div class="row"><span class="label">OpenCode</span>', dot(tools.opencode.installed), '<span class="value">', tools.opencode.installed ? "installed " + (tools.opencode.version || "") : "not installed", '</span></div>',
-    '<div class="row"><span class="label">GitHub CLI</span>', dot(tools.gh.installed && tools.gh.loggedIn), '<span class="value">', tools.gh.installed ? (tools.gh.loggedIn ? "authenticated" : "not authenticated") : "not installed", '</span></div>',
-    '<div class="row"><span class="label">Network</span>', dot(hasProxy), '<span class="value">', hasProxy ? "proxy set" : "direct", '</span></div>',
-    '</div>',
-    '<div class="card"><div class="card-title">Providers (', configuredProviders.length, ')</div>',
-    configuredProviders.length === 0 ? '<p style="color:var(--text-dim)">No providers configured</p>' :
-      configuredProviders.map((p) => '<div class="row"><span class="label">' + p.label + '</span>' + dot(true) + '<span class="value">' + p.protocol + " " + (p.fingerprint || "") + '</span></div>').join(""),
-    '</div>',
-    '<div class="card"><div class="card-title">Summary</div>',
-    '<div class="row"><span class="value">', vault.count, " credentials | ", configuredProviders.length, " providers | ", (network?.mirrors?.filter((m) => m.enabled).length || 0), ' mirrors</span></div>',
-    '</div>',
+  if (path.includes("/proxy")) {
+    api("/network").then((d) => {
+      updateProxyCard(d);
+      updateConnectivityCard(d.connectivity);
+    }).catch(() => {});
+  } else if (path.includes("/mirrors")) {
+    api("/network").then((d) => {
+      updateMirrorsCard(d.mirrors);
+      updateConnectivityCard(d.connectivity);
+    }).catch(() => {});
+  }
+}
+
+function updateDashboardSections(data) {
+  const active = document.getElementById("tabs")?.querySelector(".active")?.dataset.tab;
+  if (active !== "dashboard" || !data) return;
+
+  const el = document.getElementById("content");
+  if (!el || !el.querySelector(".card")) return;
+
+  const toolsEl = el.querySelector("#dash-tools");
+  const provEl = el.querySelector("#dash-providers");
+  const netEl = el.querySelector("#dash-network");
+  const credEl = el.querySelector("#dash-creds");
+  const mirEl = el.querySelector("#dash-mirrors");
+
+  if (data.tools && toolsEl) {
+    const tools = data.tools;
+    toolsEl.innerHTML =
+      '<tr><td>Claude Code</td><td>' + dot(tools.claude.installed) + '</td><td>' + (tools.claude.installed ? "installed " + tools.claude.version : badge("missing", "warn")) + '</td></tr>' +
+      '<tr><td>OpenCode</td><td>' + dot(tools.opencode.installed) + '</td><td>' + (tools.opencode.installed ? "installed " + tools.opencode.version : badge("missing", "warn")) + '</td></tr>' +
+      '<tr><td>GitHub CLI</td><td>' + dot(tools.gh.installed && tools.gh.loggedIn) + '</td><td>' + (tools.gh.installed ? (tools.gh.loggedIn ? "authenticated" : "not authenticated") : badge("missing", "warn")) + '</td></tr>';
+  }
+
+  if (data.providers && provEl) {
+    const configured = data.providers.filter((p) => p.configured);
+    provEl.innerHTML = configured.length === 0
+      ? '<p class="muted">No providers configured</p>'
+      : configured.map((p) => '<tr><td>' + p.label + '</td><td>' + p.protocol + '</td></tr>').join("");
+  }
+
+  if (data.network && netEl) {
+    const hasProxy = !!(data.network.proxy && data.network.proxy.http_proxy);
+    netEl.textContent = hasProxy ? "proxy set" : "direct";
+  }
+
+  if (data.vault && credEl) {
+    credEl.textContent = data.vault.count;
+  }
+
+  if (data.network && mirEl) {
+    mirEl.textContent = (data.network.mirrors || []).filter((m) => m.enabled).length;
+  }
+}
+
+function updateDashboardSectionsFromEvent() {
+  api("/status").then((d) => updateDashboardSections(d)).catch(() => {});
+}
+
+// ── Tabs ──
+let _currentTab = "dashboard";
+const TABS_MAP = ["dashboard", "network", "vault", "providers", "tools"];
+
+function switchTab(id) {
+  _currentTab = id;
+  const btns = document.querySelectorAll("#tabs button");
+  btns.forEach((b) => b.classList.remove("active"));
+  const btn = document.querySelector('#tabs button[data-tab="' + id + '"]');
+  if (btn) btn.classList.add("active");
+  render(id);
+}
+
+async function render(tab) {
+  _currentTab = tab;
+  const content = document.getElementById("content");
+
+  if (tab === "dashboard") { content.innerHTML = buildDashboardSkeleton(); await loadDashboard(content); }
+  else if (tab === "network") { content.innerHTML = buildNetworkSkeleton(); await loadNetwork(content); }
+  else if (tab === "vault") { content.innerHTML = buildCardSkeleton(); await loadVault(content); }
+  else if (tab === "providers") { content.innerHTML = buildCardSkeleton(); await loadProviders(content); }
+  else if (tab === "tools") { content.innerHTML = buildCardSkeleton(); await loadTools(content); }
+  else if (tab === "cmd") showShortcuts();
+}
+
+document.querySelectorAll("#tabs button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const tab = btn.dataset.tab;
+    if (tab === "cmd") { showShortcuts(); return; }
+    switchTab(tab);
+  });
+});
+
+// ── Keyboard shortcuts ──
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  if (e.key === "Escape") {
+    const modal = document.querySelector(".modal-overlay");
+    if (modal) { modal.remove(); return; }
+    document.querySelectorAll(".inline-confirm.active").forEach((c) => c.classList.remove("active"));
+  }
+
+  if (e.key >= "1" && e.key <= "5") {
+    const idx = parseInt(e.key) - 1;
+    switchTab(TABS_MAP[idx]);
+  }
+
+  if (e.key === "r" || e.key === "R") {
+    render(_currentTab);
+    toast("Refreshed", "info");
+  }
+});
+
+// ── Modals ──
+function showModal(title, bodyHtml, buttons) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.innerHTML = '<div class="modal"><h3>' + title + '</h3>' + bodyHtml + '<div class="btn-group">' + buttons + '</div></div>';
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+// ── Shortcuts help ──
+function showShortcuts() {
+  const content = document.getElementById("content");
+  content.innerHTML = [
+    '<div class="card"><div class="card-head">Keyboard Shortcuts</div><div class="card-body">',
+    '<table><tr><td>1-5</td><td>Switch tabs</td></tr><tr><td>Esc</td><td>Close modal / cancel</td></tr><tr><td>r</td><td>Refresh current tab</td></tr><tr><td>Enter</td><td>Submit form</td></tr></table>',
+    '</div></div>'
   ].join("");
 }
 
-async function renderNetwork(el) {
-  const data = await api("/network");
+// ── Skeleton builders ──
+function buildCardSkeleton() {
+  return '<div class="skeleton-card"><div class="skel-h"></div><div class="skel-r"></div><div class="skel-r w80"></div></div>';
+}
+
+function buildDashboardSkeleton() {
+  return '<div class="grid"><div class="skeleton-card"><div class="skel-h"></div><div class="skel-r"></div><div class="skel-r w80"></div><div class="skel-r w60"></div></div><div class="skeleton-card"><div class="skel-h"></div><div class="skel-r"></div></div></div>';
+}
+
+function buildNetworkSkeleton() {
+  return '<div class="grid"><div class="skeleton-card"><div class="skel-h"></div><div class="skel-r"></div><div class="skel-r w80"></div></div><div class="skeleton-card"><div class="skel-h"></div><div class="skel-r w60"></div><div class="skel-r"></div></div><div class="skeleton-card" style="grid-column:1/-1"><div class="skel-h"></div><div class="skel-r w80"></div></div></div>';
+}
+
+// ── Dashboard ──
+async function loadDashboard(el) {
+  try {
+    const data = await api("/status");
+    const { tools, providers, network, vault } = data;
+    const hasProxy = !!(network && network.proxy && network.proxy.http_proxy);
+    const configured = providers.filter((p) => p.configured);
+    const enabledMirrors = (network?.mirrors || []).filter((m) => m.enabled).length;
+
+    el.innerHTML = [
+      '<div class="grid">',
+      '<div class="card"><div class="card-head">System Status</div><div class="card-body"><table id="dash-tools">',
+      '<tr><td>Claude Code</td><td>', dot(tools.claude.installed), '</td><td>', tools.claude.installed ? "installed " + (tools.claude.version || "") : badge("missing","warn"), '</td></tr>',
+      '<tr><td>OpenCode</td><td>', dot(tools.opencode.installed), '</td><td>', tools.opencode.installed ? "installed " + (tools.opencode.version || "") : badge("missing","warn"), '</td></tr>',
+      '<tr><td>GitHub CLI</td><td>', dot(tools.gh.installed && tools.gh.loggedIn), '</td><td>', tools.gh.installed ? (tools.gh.loggedIn ? "authenticated" : "not authenticated") : badge("missing","warn"), '</td></tr>',
+      '</table></div></div>',
+      '<div class="card"><div class="card-head">Providers <span class="count">', configured.length, '</span></div><div class="card-body"><table id="dash-providers">',
+      configured.length === 0 ? '<p class="muted">No providers configured</p>' :
+        configured.map((p) => '<tr><td>' + p.label + '</td><td>' + p.protocol + '</td></tr>').join(""),
+      '</table></div></div>',
+      '<div class="card" style="grid-column:1/-1"><div class="card-head">Summary</div><div class="card-body">',
+      '<span id="dash-creds">', vault.count, '</span> credentials &middot; ',
+      configured.length, ' providers &middot; ',
+      '<span id="dash-mirrors">', enabledMirrors, '</span> mirrors &middot; ',
+      'Network: <span id="dash-network">', hasProxy ? "proxy set" : "direct", '</span>',
+      '</div></div>',
+      '</div>',
+    ].join("");
+  } catch (err) {
+    el.innerHTML = '<div class="card"><div class="card-body empty"><span class="badge badge-err">' + err.message + '</span></div></div>';
+  }
+}
+
+// ── Network ──
+async function loadNetwork(el) {
+  try {
+    const data = await api("/network");
+    buildNetworkContent(el, data);
+  } catch (err) {
+    el.innerHTML = '<div class="card"><div class="card-body empty"><span class="badge badge-err">' + err.message + '</span></div></div>';
+  }
+}
+
+function buildNetworkContent(el, data) {
   const { platform, proxy, mirrors, connectivity } = data;
   const hasProxy = !!(proxy && proxy.http_proxy);
   const scopes = ["npm", "pip", "apt", "node"];
 
-  const mirrorRows = scopes.map((scope) => {
-    const scopeMirrors = (mirrors || []).filter((m) => m.id.startsWith(scope));
-    const active = scopeMirrors.find((m) => m.enabled);
-    const name = active ? active.id.replace(scope + "-", "") : "none";
-    return "<tr><td>" + scope + "</td><td>" + dot(!!active) + " " + name + "</td><td>" + scopeMirrors.length + '</td><td><button class="btn" data-mirror="' + scope + '">Switch</button></td></tr>';
-  }).join("");
-
-  const connRows = connectivity && connectivity.length > 0
-    ? connectivity.map((r) => "<tr><td>" + r.name + "</td><td>" + dot(r.status === "ok") + " " + r.status + "</td><td>" + (r.status === "ok" ? r.http.ms + "ms" : "-") + "</td></tr>").join("")
-    : "";
-
   el.innerHTML = [
-    '<div class="card"><div class="card-title">Proxy</div>',
+    '<div class="grid">',
+
+    '<div class="card"><div class="card-head">Proxy</div><div class="card-body" id="proxy-card">',
     hasProxy
-      ? '<div class="row"><span class="dot dot-green"></span><span class="value">' + proxy.http_proxy + '</span></div>'
-      : '<div class="row"><span class="dot dot-gray"></span><span class="value" style="color:var(--text-dim)">No proxy configured</span></div>',
+      ? '<p style="margin-bottom:6px"><span class="dot dot-on"></span><code>' + proxy.http_proxy + '</code></p><span class="status-ok hidden" id="proxy-result"></span>'
+      : '<p class="muted" style="margin-bottom:6px"><span class="dot dot-off"></span>No proxy configured</p>',
     '<div class="btn-group">',
-    hasProxy ? '<button class="btn" id="btn-test-proxy">Test</button>' : '<button class="btn" id="btn-scan-proxy">Scan</button>',
-    '<button class="btn" id="btn-configure-proxy">Configure</button>',
-    hasProxy ? '<button class="btn btn-danger" id="btn-remove-proxy">Remove</button>' : "",
-    '</div></div>',
-    '<div class="card"><div class="card-title">Mirrors</div>',
-    '<table><tr><th>Scope</th><th>Active</th><th>Count</th><th>Action</th></tr>',
-    mirrorRows,
-    '</table><div class="btn-group"><button class="btn btn-primary" id="btn-auto-mirrors">Auto-switch fastest</button></div></div>',
-    connRows ? '<div class="card"><div class="card-title">Connectivity</div><table><tr><th>Target</th><th>Status</th><th>Latency</th></tr>' + connRows + '</table></div>' : "",
-    '<div class="card"><div class="card-title">Platform</div><div class="row"><span class="value">' + platform.os + (platform.isWSL ? " WSL" + platform.wslVersion + " (" + (platform.wslMode || "nat") + ")" : "") + '</span></div></div>',
+    hasProxy ? button("btn-test-proxy", "Test", "", "testProxy()") : button("btn-scan-proxy", "Scan", "", "scanProxy()"),
+    button("btn-conf-proxy", "Configure", "", "showProxyModal()"),
+    hasProxy ? '<span id="proxy-remove-group">' + button("btn-rm-proxy", "Remove", "btn-dng", "confirmRemoveProxy()") + '<span class="inline-confirm" id="cf-rm-proxy">Confirm: <button class="btn btn-sm btn-pri" data-confirm="yes">Yes</button> <button class="btn btn-sm" data-confirm="no">No</button></span></span>' : "",
+    '</div></div></div>',
+
+    '<div class="card"><div class="card-head">Mirrors</div><div class="card-body" id="mirrors-card"><table>',
+    scopes.map((scope) => {
+      const scopeMirrors = (mirrors || []).filter((m) => m.id.startsWith(scope));
+      const active = scopeMirrors.find((m) => m.enabled);
+      const name = active ? active.id.replace(scope + "-", "") : "none";
+      return '<tr><td>' + scope + '</td><td>' + dot(!!active) + ' ' + name + '</td><td>[' + scopeMirrors.length + ']</td><td>' + button("btn-mirror-" + scope, "Switch", "btn-sm", 'switchMirror("' + scope + '")') + '</td></tr>';
+    }).join(""),
+    '</table><div class="btn-group">' + button("btn-auto-mirrors", "Auto-switch fastest", "btn-pri btn-sm", "autoSwitchMirrors()") + '</div></div></div>',
+
+    connectivity && connectivity.length > 0
+      ? '<div class="card" style="grid-column:1/-1"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card"><table>' +
+        connectivity.map((r) => '<tr><td>' + r.name + '</td><td>' + dot(r.status === "ok") + ' ' + r.status + '</td><td>' + (r.status === "ok" ? r.http.ms + "ms" : "-") + '</td></tr>').join("") + '</table></div></div>'
+      : '<div class="card" style="grid-column:1/-1"><div class="card-head">Connectivity</div><div class="card-body empty" id="conn-card"><span class="muted">No data — press r to refresh</span></div></div>',
+
+    '<div class="card" style="grid-column:1/-1"><div class="card-head">Platform</div><div class="card-body">' +
+    '<span class="muted">' + platform.os + (platform.isWSL ? " WSL" + platform.wslVersion + " (" + (platform.wslMode || "nat") + ")" : "") + '</span></div></div>',
+
+    '</div>',
   ].join("");
 
-  el.querySelector("#btn-test-proxy")?.addEventListener("click", testProxy);
-  el.querySelector("#btn-scan-proxy")?.addEventListener("click", scanProxy);
-  el.querySelector("#btn-configure-proxy")?.addEventListener("click", showProxyModal);
-  el.querySelector("#btn-remove-proxy")?.addEventListener("click", removeProxy);
-  el.querySelector("#btn-auto-mirrors")?.addEventListener("click", autoSwitchMirrors);
-  el.querySelectorAll("[data-mirror]").forEach((btn) => {
-    btn.addEventListener("click", () => switchMirror(btn.dataset.mirror));
+  attachNetworkEvents(el);
+}
+
+function attachNetworkEvents(el) {
+  const map = {
+    "btn-test-proxy": testProxy,
+    "btn-scan-proxy": scanProxy,
+    "btn-conf-proxy": showProxyModal,
+    "btn-rm-proxy": () => confirmRemoveDelegate(el, "cf-rm-proxy", removeProxy),
+    "btn-auto-mirrors": autoSwitchMirrors,
+  };
+
+  Object.entries(map).forEach(([id, fn]) => {
+    el.querySelector("#" + id)?.addEventListener("click", fn);
+  });
+
+  el.querySelectorAll("[data-confirm]").forEach((btn) => {
+    btn.addEventListener("click", function () {
+      this.closest(".inline-confirm")?.classList.remove("active");
+      if (this.dataset.confirm === "yes") {
+        const tag = this.closest(".inline-confirm")?.id;
+        if (tag === "cf-rm-proxy") removeProxy();
+      }
+    });
+  });
+
+  el.querySelectorAll("[id^='btn-mirror-']").forEach((btn) => {
+    const scope = btn.id.replace("btn-mirror-", "");
+    btn.addEventListener("click", () => switchMirror(scope));
   });
 }
 
+function confirmRemoveDelegate(el, confirmId, onYes) {
+  const cf = el.querySelector("#" + confirmId);
+  if (!cf) return;
+  cf.classList.add("active");
+  el.querySelector("#" + confirmId + " [data-confirm=yes]").onclick = () => { cf.classList.remove("active"); onYes(); };
+}
+
+function updateProxyCard(data) {
+  const proxy = data.proxy;
+  const hasProxy = !!(proxy && proxy.http_proxy);
+  const card = document.getElementById("proxy-card");
+  if (!card) return;
+
+  const resultEl = document.getElementById("proxy-result");
+  if (resultEl && hasProxy) {
+    resultEl.classList.remove("hidden");
+  }
+
+  const btnGroup = card.querySelector(".btn-group");
+  if (hasProxy && btnGroup) {
+    const rmBtn = card.querySelector("#btn-rm-proxy");
+    if (!rmBtn) {
+      const rmSpan = document.getElementById("proxy-remove-group");
+      if (rmSpan) rmSpan.innerHTML = button("btn-rm-proxy", "Remove", "btn-dng", "confirmRemoveProxy()") +
+        '<span class="inline-confirm" id="cf-rm-proxy">Confirm: <button class="btn btn-sm btn-pri" data-confirm="yes">Yes</button> <button class="btn btn-sm" data-confirm="no">No</button></span>';
+    }
+  }
+}
+
+function updateMirrorsCard(mirrors) {
+  const card = document.getElementById("mirrors-card");
+  if (!card || !mirrors) return;
+
+  const scopes = ["npm", "pip", "apt", "node"];
+  card.querySelector("table").innerHTML = scopes.map((scope) => {
+    const scopeMirrors = (mirrors || []).filter((m) => m.id.startsWith(scope));
+    const active = scopeMirrors.find((m) => m.enabled);
+    const name = active ? active.id.replace(scope + "-", "") : "none";
+    return '<tr><td>' + scope + '</td><td>' + dot(!!active) + ' ' + name + '</td><td>[' + scopeMirrors.length + ']</td><td>' + button("btn-mirror2-" + scope, "Switch", "btn-sm", 'switchMirror("' + scope + '")') + '</td></tr>';
+  }).join("");
+
+  card.querySelectorAll("[id^='btn-mirror2-']").forEach((btn) => {
+    const scope = btn.id.replace("btn-mirror2-", "");
+    btn.addEventListener("click", () => switchMirror(scope));
+  });
+}
+
+function updateConnectivityCard(conn) {
+  const card = document.getElementById("conn-card");
+  if (!card) return;
+  if (conn && conn.length > 0) {
+    card.innerHTML = '<table>' + conn.map((r) => '<tr><td>' + r.name + '</td><td>' + dot(r.status === "ok") + ' ' + r.status + '</td><td>' + (r.status === "ok" ? r.http.ms + "ms" : "-") + '</td></tr>').join("") + '</table>';
+  }
+}
+
+// ── Network actions ──
 async function testProxy() {
-  toast("Testing proxy...", "info");
+  setButtonLoading("btn-test-proxy", true);
+  const resultEl = document.getElementById("proxy-result");
   try {
     const data = await api("/network/proxy/test", { method: "POST" });
+    if (resultEl) { resultEl.textContent = "Works (" + data.latency + "ms)"; resultEl.className = "status-ok"; resultEl.classList.remove("hidden"); }
     toast("Proxy works (" + data.latency + "ms)", "success");
-  } catch (err) { toast("Proxy not working: " + err.message, "error"); }
-  render("network");
+  } catch (err) {
+    if (resultEl) { resultEl.textContent = "Failed: " + err.message; resultEl.className = "status-err"; resultEl.classList.remove("hidden"); }
+    toast(err.message, "error");
+  } finally {
+    setButtonLoading("btn-test-proxy", false);
+  }
 }
 
 async function scanProxy() {
-  toast("Scanning...", "info");
+  setButtonLoading("btn-scan-proxy", true);
   try {
     const data = await api("/network/proxy/scan", { method: "POST" });
-    if (data.found) toast("Found: " + data.host + ":" + data.port, "success");
+    if (data.found) toast("Found: " + data.host + ":" + data.port + " — Use Configure to apply", "success");
     else toast("No proxy detected", "info");
   } catch (err) { toast(err.message, "error"); }
-  render("network");
+  finally { setButtonLoading("btn-scan-proxy", false); }
 }
 
 async function removeProxy() {
-  if (!confirm("Remove proxy configuration?")) return;
   try {
     await api("/network/proxy", { method: "DELETE" });
     toast("Proxy removed", "success");
@@ -149,30 +449,37 @@ async function removeProxy() {
 }
 
 async function switchMirror(scope) {
-  toast("Switching " + scope + " mirror...", "info");
+  setButtonLoading("btn-mirror-" + scope, true);
   try {
     const data = await api("/network/mirrors/" + scope, { method: "POST" });
     toast("Switched to " + data.mirror + " (" + data.latency + "ms)", "success");
+    const netData = await api("/network");
+    updateMirrorsCard(netData.mirrors);
   } catch (err) { toast(err.message, "error"); }
-  render("network");
+  finally {
+    setButtonLoading("btn-mirror-" + scope, false);
+  }
 }
 
 async function autoSwitchMirrors() {
-  toast("Testing all mirrors...", "info");
+  setButtonLoading("btn-auto-mirrors", true);
   try {
     const data = await api("/network/mirrors/auto", { method: "POST" });
     toast("Switched " + data.switched + " scopes", "success");
+    const netData = await api("/network");
+    updateMirrorsCard(netData.mirrors);
   } catch (err) { toast(err.message, "error"); }
-  render("network");
+  finally { setButtonLoading("btn-auto-mirrors", false); }
 }
 
 function showProxyModal() {
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = '<div class="modal"><h3>Configure Proxy</h3><div class="form-group"><label>Proxy URL</label><input id="proxy-url" placeholder="http://127.0.0.1:10808"></div><div class="btn-group"><button class="btn btn-primary" id="btn-apply-proxy">Apply</button><button class="btn" id="btn-cancel-proxy">Cancel</button></div></div>';
-  document.body.appendChild(overlay);
+  const overlay = showModal("Configure Proxy",
+    '<div class="form-group"><label>Proxy URL</label><input id="proxy-url" placeholder="http://127.0.0.1:10808"></div>',
+    '<button class="btn btn-pri" id="btn-apply-proxy">Apply</button><button class="btn" id="btn-cancel-proxy">Cancel</button>'
+  );
   overlay.querySelector("#btn-apply-proxy").addEventListener("click", applyProxy);
   overlay.querySelector("#btn-cancel-proxy").addEventListener("click", () => overlay.remove());
+  overlay.querySelector("#proxy-url").focus();
 }
 
 async function applyProxy() {
@@ -191,28 +498,42 @@ async function applyProxy() {
   render("network");
 }
 
-async function renderVault(el) {
-  const data = await api("/vault");
-  const rows = data.count === 0 ? "" :
-    "<table><tr><th>Key</th><th>Type</th><th>Fingerprint</th><th></th></tr>" +
-    data.credentials.map((c) => "<tr><td>" + c.key + "</td><td>" + c.type + "</td><td>" + (c.fingerprint || "") + '</td><td><button class="btn btn-danger" data-cred="' + c.key + '">Remove</button></td></tr>').join("") +
-    "</table>";
+// ── Vault ──
+async function loadVault(el) {
+  try {
+    const data = await api("/vault");
+    el.innerHTML = [
+      '<div class="card"><div class="card-head">Credentials <span class="count">' + data.count + '</span></div><div class="card-body">',
+      data.count === 0
+        ? '<p class="empty">No credentials stored</p>'
+        : '<table>' + data.credentials.map((c) => '<tr><td>' + c.key + '</td><td>' + c.type + '</td><td class="muted">' + (c.fingerprint || "") + '</td><td><span id="cred-row-' + c.key + '">' + button("btn-cred-" + c.key, "Remove", "btn-dng btn-sm") + '<span class="inline-confirm" id="cf-cred-' + c.key + '">Confirm: <button class="btn btn-sm btn-pri" data-confirm="yes">Yes</button> <button class="btn btn-sm" data-confirm="no">No</button></span></span></td></tr>').join("") + '</table>',
+      '<div class="btn-group">' + button("btn-add-cred", "Add credential", "btn-pri", "showAddCredential()") + '</div>',
+      '</div></div>',
+    ].join("");
 
-  el.innerHTML = '<div class="card"><div class="card-title">Credentials (' + data.count + ')</div>' +
-    (data.count === 0 ? '<p style="color:var(--text-dim)">No credentials stored</p>' : rows) +
-    '<div class="btn-group"><button class="btn btn-primary" id="btn-add-cred">Add credential</button></div></div>';
-
-  el.querySelector("#btn-add-cred")?.addEventListener("click", showAddCredential);
-  el.querySelectorAll("[data-cred]").forEach((btn) => {
-    btn.addEventListener("click", () => removeCredential(btn.dataset.cred));
-  });
+    el.querySelector("#btn-add-cred")?.addEventListener("click", showAddCredential);
+    el.querySelectorAll("[id^='btn-cred-']").forEach((btn) => {
+      const key = btn.id.replace("btn-cred-", "");
+      btn.addEventListener("click", () => {
+        document.getElementById("cf-cred-" + key)?.classList.add("active");
+        document.getElementById("cf-cred-" + key)?.querySelector("[data-confirm=yes]").addEventListener("click", () => removeCredential(key));
+      });
+    });
+    el.querySelectorAll("[data-confirm]").forEach((b) => {
+      b.addEventListener("click", function () { this.closest(".inline-confirm")?.classList.remove("active"); });
+    });
+  } catch (err) {
+    el.innerHTML = '<div class="card"><div class="card-body empty"><span class="badge badge-err">' + err.message + '</span></div></div>';
+  }
 }
 
 function showAddCredential() {
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = '<div class="modal"><h3>Add Credential</h3><div class="form-group"><label>Key</label><input id="cred-key" placeholder="api_key"></div><div class="form-group"><label>Value</label><input id="cred-value" type="password" placeholder="secret"></div><div class="form-group"><label>Type</label><select id="cred-type"><option value="api_key">API Key</option><option value="github_token">GitHub Token</option><option value="sudo_password">System Password</option><option value="other">Other</option></select></div><div class="btn-group"><button class="btn btn-primary" id="btn-save-cred">Save</button><button class="btn" id="btn-cancel-cred">Cancel</button></div></div>';
-  document.body.appendChild(overlay);
+  const overlay = showModal("Add Credential",
+    '<div class="form-group"><label>Key</label><input id="cred-key" placeholder="api_key"></div>' +
+    '<div class="form-group"><label>Value</label><input id="cred-value" type="password" placeholder="secret"></div>' +
+    '<div class="form-group"><label>Type</label><select id="cred-type"><option value="api_key">API Key</option><option value="github_token">GitHub Token</option><option value="sudo_password">System Password</option><option value="other">Other</option></select></div>',
+    '<button class="btn btn-pri" id="btn-save-cred">Save</button><button class="btn" id="btn-cancel-cred">Cancel</button>'
+  );
   overlay.querySelector("#btn-save-cred").addEventListener("click", addCredential);
   overlay.querySelector("#btn-cancel-cred").addEventListener("click", () => overlay.remove());
 }
@@ -231,7 +552,6 @@ async function addCredential() {
 }
 
 async function removeCredential(key) {
-  if (!confirm("Remove " + key + "?")) return;
   try {
     await api("/vault/" + key, { method: "DELETE" });
     toast("Removed " + key, "success");
@@ -239,62 +559,81 @@ async function removeCredential(key) {
   render("vault");
 }
 
-async function renderProviders(el) {
-  const data = await api("/providers");
-  const rows = data.map((p) => "<tr><td>" + p.label + "</td><td>" + p.protocol + "</td><td>" + (p.configured ? badge("configured", "ok") : badge("not set", "warn")) + '</td><td><button class="btn" data-provider="' + p.id + '">Test</button></td></tr>').join("");
-  el.innerHTML = '<div class="card"><div class="card-title">Providers</div><table><tr><th>Provider</th><th>Protocol</th><th>Status</th><th></th></tr>' + rows + '</table></div>';
-  el.querySelectorAll("[data-provider]").forEach((btn) => {
-    btn.addEventListener("click", () => testProvider(btn.dataset.provider));
-  });
+// ── Providers ──
+async function loadProviders(el) {
+  try {
+    const data = await api("/providers");
+    el.innerHTML = [
+      '<div class="card"><div class="card-head">Providers</div><div class="card-body">',
+      '<table>',
+      data.map((p) => '<tr><td>' + p.label + '</td><td>' + p.protocol + '</td><td>' + (p.configured ? badge("configured","ok") : badge("not set","warn")) + '</td><td>' + (p.configured ? button("btn-prov-" + p.id, "Test", "btn-sm", 'testProvider("' + p.id + '")') : "") + '</td></tr>').join(""),
+      '</table></div></div>',
+    ].join("");
+    data.forEach((p) => {
+      document.getElementById("btn-prov-" + p.id)?.addEventListener("click", () => testProvider(p.id));
+    });
+  } catch (err) {
+    el.innerHTML = '<div class="card"><div class="card-body empty"><span class="badge badge-err">' + err.message + '</span></div></div>';
+  }
 }
 
 async function testProvider(id) {
-  toast("Testing " + id + "...", "info");
+  setButtonLoading("btn-prov-" + id, true);
   try {
     const data = await api("/providers/" + id + "/test", { method: "POST" });
     if (data.ok && data.data?.reachable) toast(id + " is reachable", "success");
     else toast(id + " unreachable", "error");
   } catch (err) { toast(err.message, "error"); }
+  finally { setButtonLoading("btn-prov-" + id, false); }
 }
 
-async function renderTools(el) {
-  const data = await api("/tools");
-  el.innerHTML = '<div class="card"><div class="card-title">Tools</div><table><tr><th>Tool</th><th>Status</th><th>Version</th><th>Actions</th></tr>' +
-    "<tr><td>Claude Code</td><td>" + dot(data.claude.installed) + "</td><td>" + (data.claude.version || "-") + "</td><td>" + (data.claude.installed ? '<button class="btn" data-tool-update="claude">Update</button>' : '<button class="btn btn-primary" data-tool-install="claude">Install</button>') + "</td></tr>" +
-    "<tr><td>OpenCode</td><td>" + dot(data.opencode.installed) + "</td><td>" + (data.opencode.version || "-") + "</td><td>" + (data.opencode.installed ? '<button class="btn" data-tool-update="opencode">Update</button>' : '<button class="btn btn-primary" data-tool-install="opencode">Install</button>') + "</td></tr>" +
-    "<tr><td>GitHub CLI</td><td>" + dot(data.gh.installed && data.gh.loggedIn) + "</td><td>" + (data.gh.version || "-") + "</td><td>-</td></tr>" +
-    "</table></div>";
+// ── Tools ──
+async function loadTools(el) {
+  try {
+    const data = await api("/tools");
+    el.innerHTML = [
+      '<div class="card"><div class="card-head">Tools</div><div class="card-body"><table>',
+      '<tr><td>Claude Code</td><td>' + dot(data.claude.installed) + '</td><td>' + (data.claude.version || "-") + '</td><td>' + (data.claude.installed ? button("btn-upd-claude", "Update", "btn-sm", "updateTool('claude')") : button("btn-inst-claude", "Install", "btn-sm btn-pri", "installTool('claude')")) + '</td></tr>',
+      '<tr><td>OpenCode</td><td>' + dot(data.opencode.installed) + '</td><td>' + (data.opencode.version || "-") + '</td><td>' + (data.opencode.installed ? button("btn-upd-opencode", "Update", "btn-sm", "updateTool('opencode')") : button("btn-inst-opencode", "Install", "btn-sm btn-pri", "installTool('opencode')")) + '</td></tr>',
+      '<tr><td>GitHub CLI</td><td>' + dot(data.gh.installed && data.gh.loggedIn) + '</td><td>' + (data.gh.version || "-") + '</td><td>-</td></tr>',
+      '</table></div></div>',
+    ].join("");
 
-  el.querySelectorAll("[data-tool-install]").forEach((btn) => {
-    btn.addEventListener("click", () => installTool(btn.dataset.toolInstall));
-  });
-  el.querySelectorAll("[data-tool-update]").forEach((btn) => {
-    btn.addEventListener("click", () => updateTool(btn.dataset.toolUpdate));
-  });
+    document.getElementById("btn-inst-claude")?.addEventListener("click", () => installTool("claude"));
+    document.getElementById("btn-inst-opencode")?.addEventListener("click", () => installTool("opencode"));
+    document.getElementById("btn-upd-claude")?.addEventListener("click", () => updateTool("claude"));
+    document.getElementById("btn-upd-opencode")?.addEventListener("click", () => updateTool("opencode"));
+  } catch (err) {
+    el.innerHTML = '<div class="card"><div class="card-body empty"><span class="badge badge-err">' + err.message + '</span></div></div>';
+  }
 }
 
 async function installTool(id) {
-  toast("Installing " + id + "...", "info");
+  setButtonLoading("btn-inst-" + id, true);
   try {
     await api("/tools/" + id + "/install", { method: "POST" });
     toast("Installed " + id, "success");
+    render("tools");
   } catch (err) { toast(err.message, "error"); }
-  render("tools");
+  finally { setButtonLoading("btn-inst-" + id, false); }
 }
 
 async function updateTool(id) {
-  toast("Updating " + id + "...", "info");
+  setButtonLoading("btn-upd-" + id, true);
   try {
     await api("/tools/" + id + "/update", { method: "POST" });
     toast("Updated " + id, "success");
+    render("tools");
   } catch (err) { toast(err.message, "error"); }
-  render("tools");
+  finally { setButtonLoading("btn-upd-" + id, false); }
 }
 
+// ── Init ──
 (async () => {
   try {
     const pkg = await fetch("/package.json").then((r) => r.json()).catch(() => ({}));
     document.getElementById("version").textContent = "v" + (pkg.version || "3.0.0");
-  } catch { /* version display is optional */ }
-  render("dashboard");
+  } catch { /* optional */ }
+  connectSSE();
+  switchTab("dashboard");
 })();

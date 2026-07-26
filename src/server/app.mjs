@@ -1,6 +1,20 @@
 import { createServer } from "http";
 import { route } from "./router.mjs";
 import { serveStatic } from "./static.mjs";
+import { broadcast } from "./sse.mjs";
+
+let _pollTimer = null;
+
+function startStatusPoller() {
+  if (_pollTimer) return;
+  _pollTimer = setInterval(async () => {
+    try {
+      const { statusApi } = await import("./api/status.mjs");
+      const result = await statusApi.get();
+      broadcast("status", result.data);
+    } catch { /* poll failures are silent */ }
+  }, 30000);
+}
 
 export function startServer(port = 17790) {
   const server = createServer(async (req, res) => {
@@ -22,10 +36,14 @@ export function startServer(port = 17790) {
         serveStatic(req, res, url);
       }
     } catch (err) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: false, error: err.message }));
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
     }
   });
+
+  startStatusPoller();
 
   return new Promise((resolve) => {
     const tryListen = (p) => {

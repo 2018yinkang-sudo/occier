@@ -3,6 +3,7 @@ import { vaultApi } from "./api/vault.mjs";
 import { providersApi } from "./api/providers.mjs";
 import { toolsApi } from "./api/tools.mjs";
 import { statusApi } from "./api/status.mjs";
+import { handle as sseHandle, broadcast } from "./sse.mjs";
 
 const ROUTES = [
   ["GET",    "/api/status",                 () => statusApi.get()],
@@ -56,10 +57,19 @@ async function readBody(req) {
 }
 
 export async function route(req, res, url) {
+  if (url.pathname === "/api/events" && req.method === "GET") {
+    return sseHandle(req, res);
+  }
+
   const match = matchRoute(req.method, url.pathname);
   if (!match) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: false, error: "Not found" }));
+    if (url.pathname.startsWith("/api/")) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Not found" }));
+    } else {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not found");
+    }
     return;
   }
 
@@ -67,4 +77,12 @@ export async function route(req, res, url) {
   const result = await match.handler(body, match.params);
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify(result));
+
+  if (req.method !== "GET") {
+    broadcast("action", {
+      path: url.pathname,
+      tab: url.pathname.split("/")[2] || "status",
+      result,
+    });
+  }
 }
