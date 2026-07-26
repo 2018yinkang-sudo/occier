@@ -18,7 +18,7 @@ export async function getNetworkStatus() {
     platform: { os: env.os, isWSL: env.isWSL, wslVersion: env.wslVersion, wslMode },
     proxy,
     connectivity: null,
-    mirrors: (await allMirrors()).map((m) => ({ id: m.id, enabled: m.enabled, baseUrl: m.baseUrl, official: !!m.official })),
+    mirrors: (await allMirrors()).map((m) => ({ id: m.id, scope: m.scope, enabled: m.enabled, baseUrl: m.baseUrl, region: m.region, official: !!m.official })),
   };
 }
 

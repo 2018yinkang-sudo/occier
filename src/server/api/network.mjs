@@ -8,7 +8,7 @@ import {
   switchMirror,
 } from "../../services/network.mjs";
 import { allMirrors } from "../../mirrors/registry.mjs";
-import { testMirrorLatency } from "../../mirrors/speedtest.mjs";
+import { testMirrorLatency, testAllMirrors } from "../../mirrors/speedtest.mjs";
 
 export const networkApi = {
   async get() {
@@ -56,7 +56,46 @@ export const networkApi = {
     return result;
   },
 
-  async switchMirror(scope, _body) {
+  async listMirrors() {
+    const mirrors = await allMirrors();
+    return {
+      ok: true,
+      data: mirrors.map((m) => ({
+        id: m.id,
+        scope: m.scope,
+        baseUrl: m.baseUrl,
+        region: m.region,
+        official: !!m.official,
+        enabled: m.enabled,
+      })),
+    };
+  },
+
+  async testMirrors() {
+    const results = await testAllMirrors();
+    const mirrors = await allMirrors();
+    const scopeMap = {};
+    for (const m of mirrors) scopeMap[m.id] = m.scope;
+
+    return {
+      ok: true,
+      data: results.map((r) => ({
+        mirrorId: r.mirrorId,
+        scope: scopeMap[r.mirrorId] || "",
+        ms: r.ms,
+        status: r.status,
+      })),
+    };
+  },
+
+  async switchMirror(scope, body) {
+    if (body && body.mirrorId) {
+      const result = await switchMirror(body.mirrorId, scope);
+      return result.ok
+        ? { ok: true, data: { mirror: body.mirrorId } }
+        : { ok: false, error: result.error };
+    }
+
     const mirrors = await allMirrors();
     const scopeMirrors = mirrors.filter((m) => m.scope === scope);
     if (scopeMirrors.length === 0) return { ok: false, error: "No mirrors for scope: " + scope };
@@ -79,35 +118,39 @@ export const networkApi = {
 
   async autoSwitchMirrors() {
     const mirrors = await allMirrors();
+    const allScopes = ["npm", "pip", "apt", "node"];
     let switched = 0;
-    const failures = [];
+    const results = {};
 
-    for (const scope of ["npm", "pip", "node"]) {
+    for (const scope of allScopes) {
       const scopeMirrors = mirrors.filter((m) => m.scope === scope);
       if (scopeMirrors.length === 0) continue;
       try {
-        const results = await Promise.allSettled(
+        const testResults = await Promise.allSettled(
           scopeMirrors.map((m) => testMirrorLatency(m.id)),
         );
-        const valid = results
+        const valid = testResults
           .filter((r) => r.status === "fulfilled")
           .map((r) => r.value)
           .filter((r) => r.status === "ok")
           .sort((a, b) => a.ms - b.ms);
         if (valid.length > 0) {
           const result = await switchMirror(valid[0].mirrorId, scope);
-          if (result.ok) switched++;
-          else failures.push(`${scope}: ${result.error}`);
+          if (result.ok) {
+            switched++;
+            results[scope] = { mirror: valid[0].mirrorId.replace(scope + "-", ""), ms: valid[0].ms };
+          } else {
+            results[scope] = { error: result.error };
+          }
         }
       } catch (err) {
-        failures.push(`${scope}: ${err.message}`);
+        results[scope] = { error: err.message };
       }
     }
 
     return {
       ok: switched > 0,
-      data: { switched, failures },
-      error: failures.length > 0 ? failures.join(", ") : undefined,
+      data: { switched, results },
     };
   },
 };

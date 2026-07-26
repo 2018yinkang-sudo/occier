@@ -292,7 +292,6 @@ async function loadNetwork(el) {
 function buildNetworkContent(el, data) {
   const { platform, proxy, mirrors, connectivity } = data;
   const hasProxy = !!(proxy && proxy.http_proxy);
-  const scopes = ["npm", "pip", "apt", "node"];
 
   el.innerHTML = [
     '<div class="grid">',
@@ -307,14 +306,7 @@ function buildNetworkContent(el, data) {
     hasProxy ? '<span id="proxy-remove-group">' + button("btn-rm-proxy", "Remove", "btn-dng", "confirmRemoveProxy()") + '<span class="inline-confirm" id="cf-rm-proxy">Confirm: <button class="btn btn-sm btn-pri" data-confirm="yes">Yes</button> <button class="btn btn-sm" data-confirm="no">No</button></span></span>' : "",
     '</div></div></div>',
 
-    '<div class="card"><div class="card-head">Mirrors</div><div class="card-body" id="mirrors-card"><table>',
-    scopes.map((scope) => {
-      const scopeMirrors = (mirrors || []).filter((m) => m.id.startsWith(scope));
-      const active = scopeMirrors.find((m) => m.enabled);
-      const name = active ? active.id.replace(scope + "-", "") : "none";
-      return '<tr><td>' + scope + '</td><td>' + dot(!!active) + ' ' + name + '</td><td>[' + scopeMirrors.length + ']</td><td>' + button("btn-mirror-" + scope, "Switch", "btn-sm", 'switchMirror("' + scope + '")') + '</td></tr>';
-    }).join(""),
-    '</table><div class="btn-group">' + button("btn-auto-mirrors", "Auto-switch fastest", "btn-pri btn-sm", "autoSwitchMirrors()") + '</div></div></div>',
+    buildMirrorsCard(el, mirrors),
 
     connectivity && connectivity.length > 0
       ? '<div class="card" style="grid-column:1/-1"><div class="card-head">Connectivity</div><div class="card-body" id="conn-card"><table>' +
@@ -330,6 +322,47 @@ function buildNetworkContent(el, data) {
   attachNetworkEvents(el);
 }
 
+const SCOPES = ["npm", "pip", "apt", "node"];
+
+function buildMirrorsCard(el, mirrors) {
+  el.innerHTML += '<div class="card" style="grid-column:1/-1"><div class="card-head">Mirrors</div><div class="card-body" id="mirrors-card">' +
+    '<div class="btn-group" style="margin-bottom:12px">' +
+    button("btn-test-mirrors", "Test All Latencies", "btn-sm") +
+    button("btn-auto-mirrors", "Auto-switch Fastest", "btn-sm btn-pri") +
+    '</div>' +
+    buildMirrorTable(mirrors) +
+    '</div></div>';
+}
+
+function buildMirrorTable(mirrors, latencies) {
+  const latMap = {};
+  if (latencies) latencies.forEach((l) => { latMap[l.mirrorId] = l; });
+
+  return '<div id="mirror-table">' + SCOPES.map((scope) => {
+    const scopeMirrors = (mirrors || []).filter((m) => m.scope === scope);
+    if (scopeMirrors.length === 0) return "";
+    const active = scopeMirrors.find((m) => m.enabled);
+    const label = scope + (scope === "apt" ? " (requires sudo)" : "");
+    return '<div class="mirror-scope"><div class="mirror-scope-head">' + label +
+      ' — <span class="muted">' + scopeMirrors.length + ' mirrors</span>' +
+      (active ? ' · active: <strong>' + active.id.replace(scope + "-", "") + '</strong>' : "") +
+      '</div>' +
+      scopeMirrors.map((m) => {
+        const lat = latMap[m.id];
+        const isActive = m.enabled;
+        return '<div class="mirror-row">' +
+          '<span class="dot ' + (isActive ? "dot-on" : "dot-off") + '"></span>' +
+          '<span class="mirror-name">' + m.id.replace(scope + "-", "") + '</span>' +
+          '<span class="mirror-region">' + (m.region || "global") + '</span>' +
+          '<span class="mirror-lat">' + (lat ? (lat.status === "ok" ? lat.ms + "ms" : lat.status) : "\u2014") + '</span>' +
+          (isActive
+            ? '<span class="mirror-action status-ok">active</span>'
+            : '<button class="btn btn-sm mir-switch-btn" data-scope="' + scope + '" data-id="' + m.id + '">switch</button>') +
+          '</div>';
+      }).join("") + '</div>';
+  }).join("") + '</div>';
+}
+
 function attachNetworkEvents(el) {
   const map = {
     "btn-test-proxy": testProxy,
@@ -337,6 +370,7 @@ function attachNetworkEvents(el) {
     "btn-conf-proxy": showProxyModal,
     "btn-rm-proxy": () => confirmRemoveDelegate(el, "cf-rm-proxy", removeProxy),
     "btn-auto-mirrors": autoSwitchMirrors,
+    "btn-test-mirrors": testMirrorLatencies,
   };
 
   Object.entries(map).forEach(([id, fn]) => {
@@ -353,9 +387,8 @@ function attachNetworkEvents(el) {
     });
   });
 
-  el.querySelectorAll("[id^='btn-mirror-']").forEach((btn) => {
-    const scope = btn.id.replace("btn-mirror-", "");
-    btn.addEventListener("click", () => switchMirror(scope));
+  el.querySelectorAll(".mir-switch-btn").forEach((btn) => {
+    btn.addEventListener("click", () => switchToMirror(btn.dataset.scope, btn.dataset.id));
   });
 }
 
@@ -389,20 +422,16 @@ function updateProxyCard(data) {
 }
 
 function updateMirrorsCard(mirrors) {
-  const card = document.getElementById("mirrors-card");
-  if (!card || !mirrors) return;
+  const tbl = document.getElementById("mirror-table");
+  if (!tbl) return;
+  tbl.innerHTML = "";
+  tbl.outerHTML = buildMirrorTable(mirrors);
+  rebindMirrorButtons();
+}
 
-  const scopes = ["npm", "pip", "apt", "node"];
-  card.querySelector("table").innerHTML = scopes.map((scope) => {
-    const scopeMirrors = (mirrors || []).filter((m) => m.id.startsWith(scope));
-    const active = scopeMirrors.find((m) => m.enabled);
-    const name = active ? active.id.replace(scope + "-", "") : "none";
-    return '<tr><td>' + scope + '</td><td>' + dot(!!active) + ' ' + name + '</td><td>[' + scopeMirrors.length + ']</td><td>' + button("btn-mirror2-" + scope, "Switch", "btn-sm", 'switchMirror("' + scope + '")') + '</td></tr>';
-  }).join("");
-
-  card.querySelectorAll("[id^='btn-mirror2-']").forEach((btn) => {
-    const scope = btn.id.replace("btn-mirror2-", "");
-    btn.addEventListener("click", () => switchMirror(scope));
+function rebindMirrorButtons() {
+  document.querySelectorAll(".mir-switch-btn").forEach((btn) => {
+    btn.addEventListener("click", () => switchToMirror(btn.dataset.scope, btn.dataset.id));
   });
 }
 
@@ -448,24 +477,36 @@ async function removeProxy() {
   render("network");
 }
 
-async function switchMirror(scope) {
-  setButtonLoading("btn-mirror-" + scope, true);
+async function testMirrorLatencies() {
+  setButtonLoading("btn-test-mirrors", true);
   try {
-    const data = await api("/network/mirrors/" + scope, { method: "POST" });
-    toast("Switched to " + data.mirror + " (" + data.latency + "ms)", "success");
+    const data = await api("/network/mirrors/test", { method: "POST" });
+    const netData = await api("/network");
+    const tbl = document.getElementById("mirror-table");
+    if (tbl) {
+      tbl.outerHTML = buildMirrorTable(netData.mirrors, data);
+      rebindMirrorButtons();
+    }
+    toast("Latency test complete", "success");
+  } catch (err) { toast(err.message, "error"); }
+  finally { setButtonLoading("btn-test-mirrors", false); }
+}
+
+async function switchToMirror(scope, mirrorId) {
+  try {
+    const data = await api("/network/mirrors/" + scope, { method: "POST", body: { mirrorId } });
+    toast("Switched to " + data.mirror.replace(scope + "-", "") + (data.latency ? " (" + data.latency + "ms)" : ""), "success");
     const netData = await api("/network");
     updateMirrorsCard(netData.mirrors);
   } catch (err) { toast(err.message, "error"); }
-  finally {
-    setButtonLoading("btn-mirror-" + scope, false);
-  }
 }
 
 async function autoSwitchMirrors() {
   setButtonLoading("btn-auto-mirrors", true);
   try {
     const data = await api("/network/mirrors/auto", { method: "POST" });
-    toast("Switched " + data.switched + " scopes", "success");
+    const parts = Object.entries(data.results).map(([scope, r]) => scope + "\u2192" + (r.mirror || "") + (r.ms ? "(" + r.ms + "ms)" : r.error ? " failed" : ""));
+    toast("Switched " + data.switched + " scopes: " + parts.join(", "), "success");
     const netData = await api("/network");
     updateMirrorsCard(netData.mirrors);
   } catch (err) { toast(err.message, "error"); }

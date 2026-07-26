@@ -172,6 +172,26 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .skel-r.w80 { width: 80%; }
 .skel-r.w60 { width: 60%; }
 
+.mirror-scope { margin-bottom: 14px; }
+.mirror-scope-head {
+  font-size: 12px; font-weight: 600; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.4px;
+  margin-bottom: 6px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mirror-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 0; font-size: 13px;
+  transition: background 0.15s;
+}
+.mirror-row:hover { background: rgba(255,255,255,0.02); }
+
+.mirror-name { min-width: 100px; }
+.mirror-region { min-width: 50px; font-size: 11px; color: var(--text-dim); }
+.mirror-lat { min-width: 60px; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); }
+.mirror-action { min-width: 60px; }
+
 @media (max-width: 840px) {
   .grid { grid-template-columns: 1fr; }
   nav#tabs button { padding: 10px 12px; font-size: 12px; }
