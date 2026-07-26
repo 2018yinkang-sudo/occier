@@ -45,8 +45,10 @@ let _loadedPanels = {};
 let _rendering = false;
 let _renderDirty = false;
 let _loadGen = 0;
+let _renderTimer = null;
+let _renderResolve = null;
 
-const SPINNER_FRAMES = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
+const SPINNER_FRAMES = ["\u280B","\u2819","\u2839","\u2838","\u283C","\u2834","\u2826","\u2827","\u2807","\u280F"];
 
 const MODES = {
   focus: focusMode,
@@ -83,7 +85,6 @@ export function startDashboard(initialTab = 0) {
     }
 
     if (_state.mode !== "focus" && (key === "ESCAPE" || key === "q")) {
-      // Let the active mode handle it (search adds 'q', log closes, input cancels)
       const mode = MODES[_state.mode];
       if (mode) mode.onKey(makeCtx(), key);
       return;
@@ -91,7 +92,7 @@ export function startDashboard(initialTab = 0) {
 
     if (key === "ESCAPE" || key === "q") {
       if (_state.actionInFlight) {
-        showStatus("Action in progress — wait or press Ctrl+C to force quit", "error");
+        showStatus("Action in progress \u2014 wait or press Ctrl+C to force quit", "error");
         return;
       }
       exitDashboard();
@@ -108,20 +109,21 @@ export function startDashboard(initialTab = 0) {
   preloadPanelSummaries();
 }
 
-// Background-preload all panel modules so switching tabs is instant (no
-// dynamic import latency on first visit). Non-blocking: fires after the
-// initial render completes.
 async function preloadPanelSummaries() {
   for (const modPath of Object.values(MOD_MAP)) {
     try {
       if (!_loadedPanels[modPath]) {
         _loadedPanels[modPath] = await import(modPath);
       }
-    } catch { /* ignore — will load on demand */ }
+    } catch { /* ignore \u2014 will load on demand */ }
   }
 }
 
 export function exitDashboard() {
+  if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+  if (_switchTimer) { clearTimeout(_switchTimer); _switchTimer = null; }
+  if (_statusTimer) { clearTimeout(_statusTimer); _statusTimer = null; }
+  if (_renderResolve) { _renderResolve(); _renderResolve = null; }
   term.grabInput(false);
   term.hideCursor(false);
   term.fullscreen(false);
@@ -194,10 +196,10 @@ function setMode(nextMode) {
 }
 
 // ── Rendering ──
-// Serialized render: only one render runs at a time. Requests during an
-// in-flight render are coalesced into a single follow-up render. This
-// eliminates the duplicate-content / ghost-frame bug caused by interleaved
-// async renders (term.clear() from render N+1 between panel draws of N).
+// Renders are debounced at 16ms so rapid triggers (arrow-key repeat,
+// status churn) collapse into a single paint. When an async render is
+// already in-flight subsequent requests set a dirty flag and a single
+// follow-up render runs after the current one completes.
 
 function startLoadingAnimation() {
   let frame = 0;
@@ -206,7 +208,7 @@ function startLoadingAnimation() {
     term.moveTo(1, CONTENT_START);
     term.styleReset();
     term.bgBlack();
-    term.gray(`  ${SPINNER_FRAMES[frame]} Loading…`);
+    term.gray(`  ${SPINNER_FRAMES[frame]} Loading\u2026`);
     term.black(" ".repeat(Math.max(0, w - 14)));
     term.styleReset();
     term.hideCursor();
@@ -231,7 +233,18 @@ function renderScreen() {
     _renderDirty = true;
     return Promise.resolve();
   }
-  return _runRender();
+  if (_renderTimer !== null) {
+    clearTimeout(_renderTimer);
+    _renderTimer = null;
+  }
+  return new Promise((resolve) => {
+    _renderResolve = resolve;
+    _renderTimer = setTimeout(async () => {
+      _renderTimer = null;
+      await _runRender();
+      if (_renderResolve) { _renderResolve(); _renderResolve = null; }
+    }, 16);
+  });
 }
 
 async function _runRender() {
@@ -249,8 +262,6 @@ async function _doRender() {
   const cached = isPanelCached(tabId);
   const cursorWasUnset = _state.cursor[tabId] === undefined;
 
-  // Skeleton: draw instantly. When the panel data is not cached the content
-  // area shows a spinner animation until await loadPanel resolves.
   term.clear();
   drawHeader();
   drawTabBar();
@@ -258,12 +269,24 @@ async function _doRender() {
   drawStatusLine();
 
   if (!cached) {
-    const animTimer = startLoadingAnimation();
+    const mod = _loadedPanels[MOD_MAP[tabId]];
+    const hasSkeleton = mod && typeof mod.renderSkeleton === "function";
+    let animTimer = null;
+
+    if (!hasSkeleton) {
+      animTimer = startLoadingAnimation();
+    } else {
+      const skelBudget = makeLineBudget(term, scrollOffset);
+      term.moveTo(1, CONTENT_START);
+      try { await mod.renderSkeleton(term, skelBudget); } catch { /* ignore */ }
+      try { term.eraseDisplayAfter(); } catch { /* non-TTY: skip */ }
+    }
+
     const gen = ++_loadGen;
     term.moveTo(1, CONTENT_START);
     await loadPanel(tabId, scrollOffset);
-    stopLoadingAnimation(animTimer);
-    if (gen !== _loadGen) return; // tab was switched during load
+    if (animTimer) stopLoadingAnimation(animTimer);
+    if (gen !== _loadGen) return;
   } else {
     term.moveTo(1, CONTENT_START);
     await loadPanel(tabId, scrollOffset);
@@ -271,7 +294,6 @@ async function _doRender() {
 
   const cursorJustInitialized = cursorWasUnset && _state.cursor[tabId] !== undefined;
 
-  // Modals override normal chrome.
   if (_state.mode === "input" && _state.input?.spec) {
     drawInputModal();
   } else if (_state.mode === "select" && _state.select) {
@@ -288,14 +310,29 @@ async function _doRender() {
     }
     drawFooter();
     try { term.eraseDisplayAfter(); } catch { /* non-TTY: skip */ }
+
+    if (cursorJustInitialized) {
+      term.moveTo(1, CONTENT_START);
+      try {
+        const rebudget = makeLineBudget(term, scrollOffset);
+        rebudget.setSearchQuery(_state.search?.query || null);
+        const mod = _loadedPanels[MOD_MAP[tabId]];
+        if (mod && typeof mod.renderPanel === "function") {
+          await mod.renderPanel(term, {
+            scrollOffset,
+            cursorItemId: _state.cursor[tabId] ?? null,
+            mode: _state.mode,
+            forceRefresh: false,
+            cacheGen: _cacheGen,
+            searchQuery: _state.search?.query || null,
+          }, rebudget);
+          try { term.eraseDisplayAfter(); } catch { /* non-TTY: skip */ }
+        }
+      } catch { /* ignore render errors on cursor init pass */ }
+    }
   }
 
-  // Refresh tab bar after load for the freshest badge.
   drawTabBar();
-
-  if (cursorJustInitialized) {
-    _renderDirty = true;
-  }
 }
 
 function drawSearchBar() {
@@ -317,7 +354,6 @@ function drawLogOverlay() {
   const overlayHeight = Math.min(16, h - 5);
   const startRow = Math.max(3, h - 2 - overlayHeight);
 
-  // Clear overlay area
   for (let r = startRow; r < startRow + overlayHeight; r++) {
     term.moveTo(1, r);
     term.styleReset();
@@ -325,14 +361,12 @@ function drawLogOverlay() {
     term(" ".repeat(w));
   }
 
-  // Title bar
   term.moveTo(1, startRow);
   term.styleReset();
   term.bgBrightWhite();
   term.black("  Status Log ".padEnd(w));
   term.styleReset();
 
-  // Messages
   const messages = _state.statusHistory.slice(-(overlayHeight - 2));
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -346,7 +380,6 @@ function drawLogOverlay() {
     term.black(" ".repeat(Math.max(0, w - line.length)));
   }
 
-  // Help line
   term.moveTo(1, startRow + overlayHeight - 1);
   term.styleReset();
   term.bgGray();
@@ -362,8 +395,8 @@ function drawHeader() {
   term[theme.chrome.header.bg]();
   term[theme.chrome.header.fg]();
   term.bold();
-  const spinner = _state.actionInFlight ? " ⟳" : "";
-  const text = `  occier  v${VERSION} —  ${tab.label}${spinner} `;
+  const spinner = _state.actionInFlight ? " \u27F3" : "";
+  const text = `  occier  v${VERSION} \u2014  ${tab.label}${spinner} `;
   term.white(text);
   const pad = Math.max(0, w - text.length);
   if (pad > 0) term.white(" ".repeat(pad));
@@ -388,7 +421,6 @@ function drawTabBar() {
       term[theme.chrome.tabBar.bg]();
       term[theme.chrome.tabBar.fg]();
     }
-    // Build label with optional badge
     const mod = _loadedPanels[MOD_MAP[tab.id]];
     let label = tab.label;
     let suffix = "";
@@ -401,14 +433,13 @@ function drawTabBar() {
         if (summary && summary.error) {
           suffix = suffix ? `${suffix}!` : "(!)";
         }
-      } catch { /* ignore errors from getTabSummary */ }
+      } catch { /* ignore */ }
     }
     const cell = `${gap}${label}${suffix}${gap}`;
     term(cell);
     consumed += cell.length;
   }
 
-  // Fill remaining width so the whole tab-bar row has a consistent background.
   const pad = Math.max(0, w - consumed);
   if (pad > 0) {
     term[theme.chrome.tabBar.bg]();
@@ -424,13 +455,28 @@ function drawFooter() {
   term.styleReset();
   term[theme.chrome.footer.bg]();
 
-  const full = "  ↑↓ Move · Enter Action · ←→ Tab · PgUp/PgDn · Home/End · F5 Refresh · q Quit  ";
-  let text = full;
-  if (w < full.length) {
-    text = "  ↑↓ Move · Enter Action · ←→ Tab · F5 Refresh · q Quit  ";
+  const tabId = currentTabId();
+  const mod = _loadedPanels[MOD_MAP[tabId]];
+  let hint = null;
+  if (mod && typeof mod.getFooterHint === "function") {
+    try {
+      const cursorId = _state.cursor[tabId] ?? null;
+      hint = mod.getFooterHint(cursorId, _state.mode);
+    } catch { /* ignore */ }
   }
-  if (w < text.length) {
-    text = "  ↑↓ Move · Enter Action · q Quit  ";
+
+  let text;
+  if (hint) {
+    text = `  ${hint}  `;
+  } else {
+    const full = "  \u2191\u2193 Move \u00b7 Enter Action \u00b7 \u2190\u2192 Tab \u00b7 PgUp/PgDn \u00b7 Home/End \u00b7 F5 Refresh \u00b7 q Quit  ";
+    text = full;
+    if (w < full.length) {
+      text = "  \u2191\u2193 Move \u00b7 Enter Action \u00b7 \u2190\u2192 Tab \u00b7 F5 Refresh \u00b7 q Quit  ";
+    }
+    if (w < text.length) {
+      text = "  \u2191\u2193 Move \u00b7 Enter Action \u00b7 q Quit  ";
+    }
   }
 
   term[theme.chrome.footer.fg](text);
@@ -468,13 +514,12 @@ function drawInputModal() {
   const w = Number.isFinite(term.width) ? term.width : 80;
   const h = Number.isFinite(term.height) ? term.height : 24;
   const boxWidth = Math.min(62, w - 4);
-  const boxHeight = 5; // top border + title + input + hint + bottom border
+  const boxHeight = 5;
   const row = Math.floor((h - boxHeight) / 2);
   const col = Math.floor((w - boxWidth) / 2) + 1;
   const inner = boxWidth - 2;
-  const display = password ? "•".repeat(_state.input.buffer.length) : _state.input.buffer;
+  const display = password ? "\u2022".repeat(_state.input.buffer.length) : _state.input.buffer;
 
-  // ── Top border with title ──
   const titleText = ` ${title} `;
   const rightDash = Math.max(0, boxWidth - 2 - titleText.length);
   term.moveTo(col, row);
@@ -486,7 +531,6 @@ function drawInputModal() {
     theme.modal.border.tr,
   );
 
-  // ── Input field with horizontal scroll ──
   const fieldWidth = inner - prompt.length - 2;
   let scrollStart = 0;
   if (display.length > fieldWidth) {
@@ -505,7 +549,6 @@ function drawInputModal() {
   if (displayPad > 0) term.black(" ".repeat(displayPad));
   term[theme.modal.border.fg](theme.modal.border.v);
 
-  // ── Hint / error line ──
   term.moveTo(col, row + 2);
   term[theme.modal.border.fg](theme.modal.border.v);
   term[theme.modal.body.bg]();
@@ -514,11 +557,10 @@ function drawInputModal() {
     term.red(errPrefix.slice(0, inner));
     term.black(" ".repeat(Math.max(0, inner - errPrefix.length)));
   } else {
-    term[theme.modal.hint.fg](" Enter submit · Esc cancel ".padEnd(inner));
+    term[theme.modal.hint.fg](" Enter submit \u00b7 Esc cancel ".padEnd(inner));
   }
   term[theme.modal.border.fg](theme.modal.border.v);
 
-  // ── Bottom border ──
   term.moveTo(col, row + 3);
   term[theme.modal.border.fg](
     theme.modal.border.bl +
@@ -526,7 +568,6 @@ function drawInputModal() {
     theme.modal.border.br,
   );
 
-  // Position cursor inside the input field
   term.moveTo(cursorCol, row + 1);
   term.hideCursor(false);
 }
@@ -540,12 +581,11 @@ function drawSelectModal() {
   const h = Number.isFinite(term.height) ? term.height : 24;
   const boxWidth = Math.min(58, w - 4);
   const maxOptions = Math.max(1, Math.min(choices.length, h - 8));
-  const boxHeight = 4 + maxOptions; // top border + prompt + options + hint + bottom border
+  const boxHeight = 4 + maxOptions;
   const row = Math.floor((h - boxHeight) / 2);
   const col = Math.floor((w - boxWidth) / 2) + 1;
   const inner = boxWidth - 2;
 
-  // Top border with title
   const titleText = prompt ? ` ${prompt} ` : " Select ";
   const rightDash = Math.max(0, boxWidth - 2 - titleText.length);
   term.moveTo(col, row);
@@ -554,13 +594,12 @@ function drawSelectModal() {
     theme.modal.border.tl + titleText + theme.modal.border.h.repeat(rightDash) + theme.modal.border.tr,
   );
 
-  // Options
   const startIdx = Math.max(0, cursor - Math.floor(maxOptions / 2));
   const endIdx = Math.min(choices.length, startIdx + maxOptions);
   for (let i = startIdx; i < endIdx; i++) {
     const isFocused = i === cursor;
     const label = choices[i].label;
-    const displayLabel = isFocused ? `▸ ${label}` : `  ${label}`;
+    const displayLabel = isFocused ? `\u25B8 ${label}` : `  ${label}`;
     term.moveTo(col, row + 1 + (i - startIdx));
     term[theme.modal.border.fg](theme.modal.border.v);
     term[theme.modal.body.bg]();
@@ -575,15 +614,13 @@ function drawSelectModal() {
     term[theme.modal.border.fg](theme.modal.border.v);
   }
 
-  // Hint line
   const hintRow = row + 1 + maxOptions;
   term.moveTo(col, hintRow);
   term[theme.modal.border.fg](theme.modal.border.v);
   term[theme.modal.body.bg]();
-  term[theme.modal.hint.fg](" Enter select · Esc cancel ".padEnd(inner));
+  term[theme.modal.hint.fg](" Enter select \u00b7 Esc cancel ".padEnd(inner));
   term[theme.modal.border.fg](theme.modal.border.v);
 
-  // Bottom border
   term.moveTo(col, hintRow + 1);
   term[theme.modal.border.fg](
     theme.modal.border.bl + theme.modal.border.h.repeat(boxWidth - 2) + theme.modal.border.br,
@@ -622,8 +659,6 @@ async function loadPanel(tabId, scrollOffset) {
     term.red(`Panel "${tabId}" render error: ${err.message}\n`);
   }
 
-  // Initialize cursor to the first selectable item if not yet set for this tab,
-  // or reset if the current cursor points to a deleted item.
   if (budget.items.length > 0) {
     const currentCursor = _state.cursor[tabId];
     if (currentCursor === undefined || !budget.items.some((i) => i.id === currentCursor)) {
@@ -703,7 +738,7 @@ function ensureCursorVisible() {
   if (!item) return;
 
   const viewportLines = contentMaxLines(term);
-  const line = item.logicalLine - 1; // 0-based
+  const line = item.logicalLine - 1;
   const offset = getScrollOffset(_state, currentTabId());
 
   if (line < offset) {
@@ -729,7 +764,6 @@ async function invokeAction(itemId) {
   try {
     const result = await mod.handleAction(term, itemId);
 
-    // If the user switched tabs during the action, discard the result.
     if (currentTabId() !== tabId) return;
 
     if (result && typeof result === "object" && result.input) {
@@ -746,11 +780,6 @@ async function invokeAction(itemId) {
     if (result) {
       const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
       showStatus(result, kind);
-      // Note: do NOT bump _cacheGen here. Plain string results from
-      // handleAction may be informational (e.g. "switch to Network tab").
-      // Panels that mutate state set their own _lastUpdate = 0 for
-      // self-invalidation. Cross-panel cacheGen bump only happens after
-      // multi-step input/select flows (submitInput / confirmSelect).
     }
   } catch (err) {
     showStatus(`Error: ${err.message}`, "error");
@@ -773,7 +802,6 @@ async function submitInput() {
   try {
     const result = await continueFn(value);
     if (result && typeof result === "object" && result.input) {
-      // Chain to a new input modal (multi-step flow)
       _state.input = { spec: result.input, buffer: "", cursor: 0, error: null, continue: result.continue };
       setMode("input");
       return;
@@ -858,7 +886,11 @@ function showStatus(message, kind = null) {
   _statusTimer = setTimeout(() => {
     _statusTimer = null;
     _state.status = null;
-    renderScreen();
+    if (_state.mode === "focus" || _state.mode === "log") {
+      drawStatusLine();
+    } else {
+      renderScreen();
+    }
   }, duration);
   renderScreen();
 }
