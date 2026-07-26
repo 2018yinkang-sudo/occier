@@ -63,7 +63,7 @@ nav#tabs button {
 nav#tabs button:hover { color: var(--text); background: var(--bg-hover); }
 nav#tabs button.active { color: var(--text); background: var(--bg-card); }
 
-main#content { padding: 16px 0; }
+main#content { padding: 16px 0 210px; }
 
 .card {
   background: var(--bg-card);
@@ -129,6 +129,46 @@ td { border-bottom: 1px solid var(--border); }
 .dot-gray { background: var(--text-dim); }
 .dot-red { background: var(--red); }
 
+.terminal {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: #0d1117;
+  border-top: 1px solid var(--border);
+  z-index: 999;
+  transition: height 0.2s;
+  font-family: "Menlo", "Consolas", monospace;
+}
+.terminal.collapsed { height: 32px; }
+.terminal:not(.collapsed) { height: 200px; }
+.terminal-bar {
+  display: flex; align-items: center;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #161b22;
+}
+.terminal-title {
+  font-size: 12px; color: var(--text-dim); flex: 1;
+}
+.terminal-btn {
+  background: none; border: 1px solid var(--border);
+  color: var(--text-dim); padding: 2px 8px;
+  cursor: pointer; border-radius: 3px; font-size: 11px; margin-left: 4px;
+}
+.terminal-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.terminal-body {
+  overflow-y: auto; padding: 8px 12px;
+  font-size: 12px; line-height: 1.6;
+  color: var(--text); white-space: pre-wrap;
+  height: calc(200px - 33px); margin: 0;
+}
+.terminal-body .cmd { color: var(--accent); }
+.terminal-body .out { color: var(--text); }
+.terminal-body .err { color: var(--red); }
+.terminal-body .ok { color: var(--green); }
+.terminal-body .fail { color: var(--red); }
+.terminal-body .meta { color: var(--text-dim); }
+.terminal-body .sep { color: var(--border); }
+
 .toast {
   position: fixed;
   bottom: 24px;
@@ -144,6 +184,7 @@ td { border-bottom: 1px solid var(--border); }
 .toast.success { background: rgba(63,185,80,0.2); border: 1px solid var(--green); color: var(--green); }
 .toast.error { background: rgba(248,81,73,0.2); border: 1px solid var(--red); color: var(--red); }
 .toast.info { background: rgba(88,166,255,0.2); border: 1px solid var(--accent); color: var(--accent); }
+.toast.warn { background: rgba(210,153,34,0.2); border: 1px solid #d29922; color: #d29922; }
 
 input, select {
   background: var(--bg);

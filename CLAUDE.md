@@ -199,6 +199,15 @@ When changing a contract:
 
 Never rely on undocumented shape assumptions.
 
+#### Credential types
+
+`src/store/credential-types.mjs` is the single source of truth for vault credential types and model-key presets. Each type declares a field schema consumed by both the Web UI (`src/web/app.js`) and the CLI (`src/commands/v2/vault.mjs`). Storage shapes:
+
+- non-structured type: `{ type, value: <string>, updatedAt }`
+- structured type (`model_key`): `{ type, fields: { endpoint_type, base_url, api_key, model?, label? }, updatedAt }`
+
+`list()` masks secrets via `publicFieldsFor`; plaintext leaves the store only through `getCredential` (CLI `--reveal` path). The HTTP API has no reveal endpoint. Vault model keys are merged into the provider list via the in-memory cache populated by `loadVaultProviders()` (called at startup in `src/cli.mjs` and after every vault write).
+
 ---
 
 ## 5. Code Design Rules

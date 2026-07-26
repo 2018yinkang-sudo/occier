@@ -42,6 +42,7 @@ const COMMANDS = [
       list: { modulePath: "../commands/v2/vault.mjs", exportName: "vaultList", help: "List stored credentials" },
       set: { modulePath: "../commands/v2/vault.mjs", exportName: "vaultSet", help: "Store a credential" },
       get: { modulePath: "../commands/v2/vault.mjs", exportName: "vaultGet", help: "Show credential details", args: ["key"] },
+      test: { modulePath: "../commands/v2/vault.mjs", exportName: "vaultTest", help: "Test credential validity", args: ["key"] },
       remove: { modulePath: "../commands/v2/vault.mjs", exportName: "vaultRemove", help: "Remove a credential" },
       passphrase: { modulePath: "../commands/v2/vault.mjs", exportName: "vaultPassphrase", help: "Manage vault passphrase" },
     },

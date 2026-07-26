@@ -43,8 +43,7 @@ export async function saveGitHubPAT(token, description = "fine-grained PAT") {
   const store = createStore();
   await store.set("github_token", {
     type: "github_token",
-    value: token,
-    description,
+    fields: { token, email: description },
     updatedAt: new Date().toISOString(),
   });
   return true;
@@ -54,7 +53,8 @@ export async function getGitHubPAT() {
   const { createStore } = await import("../../store/credential-store.mjs");
   const store = createStore();
   const data = await store.get("github_token");
-  return data?.value || null;
+  // Structured github_token (token field) or legacy string value.
+  return data?.fields?.token || data?.value || null;
 }
 
 export async function getPreferredAuthMethod() {

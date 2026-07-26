@@ -91,14 +91,20 @@ export function hasCommand(cmd) {
 // Run a command with sudo, reading the system password from the vault.
 // The password is injected via stdin pipe — NEVER as a command argument,
 // never in env vars, never in log output.
-// Throws if no sudo_password is stored in the vault.
+// Resolves any credential of type `sudo_password` (regardless of its name),
+// falling back to the legacy literal `sudo_password` key for backward compat.
 export async function runWithSudo(cmd, args = [], opts = {}) {
   const { createStore } = await import("../store/credential-store.mjs");
   const store = createStore();
-  const data = await store.get("sudo_password");
+  let data = await store.get("sudo_password");
+  if (!data?.value) {
+    const entries = await store.list();
+    const sudoEntry = entries.find((e) => e.type === "sudo_password");
+    if (sudoEntry) data = await store.get(sudoEntry.key);
+  }
   if (!data?.value) {
     throw new Error(
-      "sudo_password not found in vault. Store it with: occier vault set",
+      "sudo_password not found in vault. Store one with: occier vault set (type: System Password)",
     );
   }
 

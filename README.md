@@ -58,6 +58,39 @@ occier 是一层本地 AI 开发环境控制面，管理网络、凭证、模型
 
 Each provider comes with built-in model catalogs, connectivity probes, and secure credential management.
 
+## Credential Vault
+
+The vault stores typed credentials, encrypted with AES-256-GCM. Each type has its own field schema (shared by the Web UI and CLI), so adding a type only touches `src/store/credential-types.mjs`.
+
+| Type | Fields | Notes |
+|------|--------|-------|
+| `model_key` | `endpoint_type`, `base_url`, `api_key`, `model?`, `label?` | Structured; acts as a user-defined provider |
+| `api_key` | `value` | Generic API key |
+| `github_token` | `value` | GitHub PAT |
+| `proxy_password` | `value` | Proxy auth |
+| `sudo_password` | `value` | Local sudo password |
+| `other` | `value` | Any secret |
+
+**Model keys** carry `base_url` + `api_key` + `endpoint_type` and you name them yourself. They appear in the provider list and can be launched directly (`occier <name>`). Endpoint types:
+
+- `anthropic` — `POST {base_url}/v1/messages` (Anthropic, DeepSeek, Kimi)
+- `openai` — `POST {base_url}/v1/chat/completions` (OpenAI, 智谱, 通义千问/DashScope, OpenRouter, and most Chinese providers via OpenAI-compatible endpoints)
+- `gemini` — Google Gemini native
+
+Built-in presets (DeepSeek, Kimi, 智谱, 通义千问, OpenAI, Anthropic, OpenRouter, Gemini, OpenAI-compatible, Custom) auto-fill `endpoint_type` + `base_url`. Mainland Chinese providers are predominantly OpenAI-compatible — select the **OpenAI 兼容** preset and fill `base_url` per the vendor's docs.
+
+**Consumption**: launching Claude Code with an `anthropic`-protocol model key sets `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`. `openai`/`gemini` keys cannot drive Claude Code directly (use `opencode`). Only the provider you select at launch is activated, so multiple model keys never conflict.
+
+**Security**: the HTTP API never returns plaintext (no reveal endpoint); plaintext is only available via `occier vault get <key> --reveal` (stderr). Deletion requires typing the key name. The server binds to `127.0.0.1` only.
+
+```bash
+occier vault set          # type-aware: pick type → fill type-specific fields
+occier vault list         # shows type + endpoint + masked fingerprint
+occier vault get <key> --reveal   # plaintext to stderr (CLI only)
+occier vault remove <key>
+occier vault passphrase set       # protect vault with a passphrase
+```
+
 ## Network Configuration
 
 For **China mainland** and **WSL** users:

@@ -4,6 +4,7 @@ import { constants } from "fs";
 import { randomBytes, createCipheriv, createDecipheriv, pbkdf2Sync } from "crypto";
 import { homedir, hostname } from "os";
 import { join, dirname, basename } from "path";
+import { maskEntry, maskValue, publicFieldsFor, isStructuredType } from "./credential-types.mjs";
 
 const OC_DIR = join(
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
@@ -172,11 +173,28 @@ export function getDeviceFingerprint() {
   return parts.join("|");
 }
 
-export function maskValue(value, type) {
-  if (type === "sudo_password") return value ? "configured" : "<not set>";
-  if (!value) return "<not set>";
-  if (value.length <= 4) return "****";
-  return "****" + value.slice(-4);
+// maskValue is re-exported from credential-types for backwards-compatible
+// callers (services/vault, services/provider, config-io).
+export { maskValue };
+
+// Normalize a raw stored entry into a list-view item. Handles three shapes:
+//   - raw string (very old vault): treated as a generic api_key
+//   - non-structured object: { type, value, updatedAt }
+//   - structured object (model_key): { type, fields, updatedAt }
+// Secret fields are masked via publicFieldsFor; the full plaintext never leaves
+// the store through list().
+function normalizeListEntry(key, value) {
+  if (typeof value === "string") {
+    return { key, type: "api_key", fingerprint: maskValue(value, "api_key"), updatedAt: null, fields: undefined };
+  }
+  const type = value.type || "api_key";
+  return {
+    key,
+    type,
+    fingerprint: maskEntry(value),
+    updatedAt: value.updatedAt || null,
+    fields: isStructuredType(type) ? publicFieldsFor(type, value.fields) : undefined,
+  };
 }
 
 // ── legacy env parsing ──
@@ -310,15 +328,7 @@ export class FileCredentialStore extends CredentialStore {
     for (const [key, value] of Object.entries(legacy)) {
       if (!(key in data)) data[key] = value;
     }
-    return Object.entries(data).map(([key, value]) => ({
-      key,
-      type: typeof value === "object" ? value.type : "unknown",
-      fingerprint: maskValue(
-        typeof value === "string" ? value : value.value ?? "",
-        typeof value === "object" ? value.type : undefined,
-      ),
-      updatedAt: value.updatedAt || null,
-    }));
+    return Object.entries(data).map(([key, value]) => normalizeListEntry(key, value));
   }
 
   async has(key) {
@@ -387,12 +397,7 @@ export class EncryptedFileStore extends CredentialStore {
     for (const [key, value] of Object.entries(legacy)) {
       if (!(key in data)) data[key] = value;
     }
-    return Object.entries(data).map(([key, entry]) => ({
-      key,
-      type: entry.type || "api_key",
-      fingerprint: maskValue(entry.value ?? "", entry.type),
-      updatedAt: entry.updatedAt || null,
-    }));
+    return Object.entries(data).map(([key, entry]) => normalizeListEntry(key, entry));
   }
 
   async has(key) {
@@ -414,8 +419,11 @@ export class EncryptedFileStore extends CredentialStore {
 
     const raw = await readFile(this.filePath);
 
-    // Auto-migration: early vault versions stored plaintext JSON
-    if (raw.length > 0 && raw[0] === 0x7b /* '{' */) {
+    // Auto-migration: early vault versions stored plaintext JSON.
+    // Only attempt this heuristic when there is NO meta file. If meta exists,
+    // the vault is definitely encrypted — the first byte being 0x7b ('{')
+    // is just a coincidence of the random salt, not a JSON indicator.
+    if (!meta && raw.length > 0 && raw[0] === 0x7b /* '{' */) {
       try {
         const data = JSON.parse(raw.toString("utf-8"));
         this._needsMigration = true;

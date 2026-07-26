@@ -79,7 +79,7 @@ async function checkGhAuth() {
   const { createStore } = await import("../store/credential-store.mjs");
   const store = createStore();
   const data = await store.get("github_token");
-  return !!(data && data.value);
+  return !!(data && (data.fields?.token || data.value));
 }
 
 export function detectProxyEnv() {

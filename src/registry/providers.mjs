@@ -136,20 +136,38 @@ for (const p of BUILTIN_PROVIDERS) {
   providerRegistry.register(p.id, p);
 }
 
+// In-memory cache of vault model-key providers, populated by
+// loadVaultProviders() (services/vault.mjs) at startup and after every vault
+// mutation. Mirrors the loadUserProviders() pattern so allProviders() /
+// getProvider() stay synchronous for the many sync callers.
+let _vaultProviders = [];
+
+export function setVaultProviders(providers) {
+  _vaultProviders = Array.isArray(providers) ? providers : [];
+}
+
+export function getVaultProvidersCache() {
+  return _vaultProviders;
+}
+
 export function getProvider(id) {
+  const vault = _vaultProviders.find((p) => p.id === id);
+  if (vault) return vault;
   const user = getUserProviders().find((p) => p.id === id);
   if (user) return user;
   return providerRegistry.get(id);
 }
 
 export function getProviderSafe(id) {
+  const vault = _vaultProviders.find((p) => p.id === id);
+  if (vault) return vault;
   const user = getUserProviders().find((p) => p.id === id);
   if (user) return user;
   return providerRegistry.tryGet(id);
 }
 
 export function allProviders() {
-  return [...providerRegistry.list(), ...getUserProviders()];
+  return [...providerRegistry.list(), ...getUserProviders(), ..._vaultProviders];
 }
 
 export function providerChoices() {

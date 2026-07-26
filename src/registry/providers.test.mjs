@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getProvider, getProviderSafe, allProviders, providerChoices } from "./providers.mjs";
+import { getProvider, getProviderSafe, allProviders, providerChoices, setVaultProviders } from "./providers.mjs";
 
 describe("provider registry", () => {
   it("has 7 built-in providers", () => {
@@ -50,5 +50,43 @@ describe("provider registry", () => {
       expect(c).toHaveProperty("name");
       expect(c).toHaveProperty("value");
     }
+  });
+});
+
+describe("provider registry — vault model-key providers", () => {
+  it("vault providers merge into allProviders and are resolvable", () => {
+    setVaultProviders([
+      {
+        id: "my_vault_mk",
+        label: "My Vault MK",
+        protocol: "anthropic",
+        authType: "api_key",
+        envVarName: "MY_VAULT_MK",
+        baseURL: "https://api.example.com/anthropic",
+        healthUrl: "https://api.example.com/anthropic/v1/messages",
+        models: [],
+        defaultModel: null,
+        claudeEnv: {},
+        source: "vault",
+      },
+    ]);
+    const all = allProviders();
+    expect(all.some((p) => p.id === "my_vault_mk")).toBe(true);
+    const p = getProvider("my_vault_mk");
+    expect(p.protocol).toBe("anthropic");
+    expect(getProviderSafe("my_vault_mk")).toBeTruthy();
+  });
+
+  it("vault providers take precedence over builtin with same id", () => {
+    setVaultProviders([{ id: "deepseek", label: "Override", protocol: "openai", envVarName: "X" }]);
+    expect(getProvider("deepseek").label).toBe("Override");
+    // restore
+    setVaultProviders([]);
+  });
+
+  // Restore empty cache so other test files / later runs are unaffected.
+  it("clears vault cache", () => {
+    setVaultProviders([]);
+    expect(allProviders()).toHaveLength(7);
   });
 });

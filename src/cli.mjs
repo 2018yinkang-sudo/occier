@@ -130,6 +130,14 @@ export async function route(args) {
     await loadUserProviders();
   } catch { /* user providers are optional */ }
 
+  // Load vault model-key providers into the in-memory cache so they appear in
+  // allProviders()/getProvider() for both CLI and the web server. Best-effort:
+  // a passphrase-gated or unreadable vault must not block the CLI.
+  try {
+    const { loadVaultProviders } = await import('./services/vault.mjs');
+    await loadVaultProviders();
+  } catch { /* vault is optional */ }
+
   if (args.length === 0) {
     await launchUI();
     return;

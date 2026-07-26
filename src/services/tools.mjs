@@ -23,7 +23,7 @@ async function checkGhFromVault() {
   // Check vault for a stored github_token instead of spawning `gh auth status`.
   const store = createStore();
   const data = await store.get("github_token");
-  return { installed: true, loggedIn: !!(data && data.value) };
+  return { installed: true, loggedIn: !!(data && (data.fields?.token || data.value)) };
 }
 
 export async function installTool(tool) {
