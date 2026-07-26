@@ -29,6 +29,7 @@ export function line(term, ...parts) {
     }
   }
 
+  if (remaining > 0) term(" ".repeat(remaining));
   term("\n");
 }
 
@@ -84,6 +85,7 @@ export function selectedLine(term, ...parts) {
     }
   }
 
+  if (remaining > 0) term(" ".repeat(remaining));
   term("\n");
 }
 

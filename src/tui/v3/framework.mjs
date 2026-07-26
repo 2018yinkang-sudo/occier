@@ -759,7 +759,6 @@ async function invokeAction(itemId) {
   if (!mod || typeof mod.handleAction !== "function") return;
 
   _state.actionInFlight = true;
-  renderScreen();
 
   try {
     const result = await mod.handleAction(term, itemId);
@@ -779,10 +778,10 @@ async function invokeAction(itemId) {
 
     if (result) {
       const kind = typeof result === "string" && result.startsWith("Error:") ? "error" : "success";
-      showStatus(result, kind);
+      showStatus(result, kind, { skipRender: true });
     }
   } catch (err) {
-    showStatus(`Error: ${err.message}`, "error");
+    showStatus(`Error: ${err.message}`, "error", { skipRender: true });
   } finally {
     _state.actionInFlight = false;
     renderScreen();
@@ -870,7 +869,7 @@ function cancelSelect() {
 
 // ── Status ──
 
-function showStatus(message, kind = null) {
+function showStatus(message, kind = null, options = {}) {
   if (!kind) {
     kind = typeof message === "string" && message.startsWith("Error:") ? "error" : "success";
   }
@@ -889,7 +888,7 @@ function showStatus(message, kind = null) {
     if (_state.mode === "focus" || _state.mode === "log") {
       drawStatusLine();
     } else {
-      renderScreen();
+  if (!options.skipRender) renderScreen();
     }
   }, duration);
   renderScreen();
