@@ -9,6 +9,10 @@ export function isCached() {
   return _cache !== null && (Date.now() - _lastUpdate) <= 10000;
 }
 
+export function hasData() {
+  return _cache !== null;
+}
+
 export async function renderPanel(term, state, budget) {
   const now = Date.now();
   if (now - _lastUpdate > 10000 || !_cache || state.forceRefresh || state.cacheGen !== _lastCacheGen) {

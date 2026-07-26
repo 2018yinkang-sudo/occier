@@ -270,7 +270,8 @@ async function _doRender() {
 
   if (!cached) {
     const mod = _loadedPanels[MOD_MAP[tabId]];
-    const hasSkeleton = mod && typeof mod.renderSkeleton === "function";
+    const hasSkeleton = mod && typeof mod.renderSkeleton === "function"
+      && (typeof mod.hasData !== "function" || !mod.hasData());
     let animTimer = null;
 
     if (!hasSkeleton) {
