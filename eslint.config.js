@@ -26,6 +26,28 @@ export default [
     },
   },
   {
+    files: ["src/web/**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        document: "readonly",
+        window: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        confirm: "readonly",
+        alert: "readonly",
+      },
+    },
+    rules: {
+      "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "no-console": "off",
+      "no-undef": "off",
+    },
+  },
+  {
     ignores: ["node_modules/", "package-lock.json"],
   },
 ];

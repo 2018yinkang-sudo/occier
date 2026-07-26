@@ -1,0 +1,41 @@
+import { createServer } from "http";
+import { route } from "./router.mjs";
+import { serveStatic } from "./static.mjs";
+
+export function startServer(port = 17790) {
+  const server = createServer(async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    try {
+      const url = new URL(req.url, "http://127.0.0.1");
+      if (url.pathname.startsWith("/api/")) {
+        await route(req, res, url);
+      } else {
+        serveStatic(req, res, url);
+      }
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+  });
+
+  return new Promise((resolve) => {
+    const tryListen = (p) => {
+      server.once("error", () => {
+        if (p < 65535) tryListen(p + 1);
+      });
+      server.listen(p, "127.0.0.1", () => {
+        resolve({ server, port: p });
+      });
+    };
+    tryListen(port);
+  });
+}

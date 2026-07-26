@@ -2,13 +2,14 @@ import { c } from './tui.mjs';
 import { lookupCommand, resolveModule } from './registry/commands.mjs';
 
 const HELP = `
-  ${c.boldCyan('occier')} ${c.gray('— AI Dev Environment Manager (v2)')}
+  ${c.boldCyan('occier')} ${c.gray('— AI Dev Environment Manager (v3)')}
 
   ${c.boldWhite('Usage:')}
-    ${c.cyan('occier')}                     Open interactive dashboard
+    ${c.cyan('occier')}                     Open web UI (browser-based)
     ${c.cyan('occier')} ${c.gray('<command>')}           Run a command
 
   ${c.boldWhite('Commands:')}
+    ${c.cyan('ui')}                     Open web UI in browser
     ${c.cyan('init')}                   First-time setup wizard
     ${c.cyan('doctor')}                 System diagnostics & repair
     ${c.cyan('status')}                 Show environment status
@@ -33,9 +34,13 @@ const HELP = `
     ${c.cyan('--version, -v')}          Show version
 `;
 
-async function displayDashboard() {
-  const { startDashboard } = await import('./tui/v3/framework.mjs');
-  startDashboard(0);
+async function launchUI() {
+  const { startServer } = await import('./server/app.mjs');
+  const { openBrowser } = await import('./server/browser.mjs');
+  const { port } = await startServer();
+  openBrowser(`http://127.0.0.1:${port}`);
+  console.log(`  occier v3 running at http://127.0.0.1:${port}`);
+  console.log('  Press Ctrl+C to stop');
 }
 
 async function dispatchTemplate(args) {
@@ -126,7 +131,7 @@ export async function route(args) {
   } catch { /* user providers are optional */ }
 
   if (args.length === 0) {
-    await displayDashboard();
+    await launchUI();
     return;
   }
 
@@ -141,6 +146,11 @@ export async function route(args) {
     const { readFile } = await import('fs/promises');
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8'));
     console.log(`occier v${pkg.version}`);
+    return;
+  }
+
+  if (cmd === 'ui') {
+    await launchUI();
     return;
   }
 
